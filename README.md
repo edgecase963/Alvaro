@@ -1,4 +1,4 @@
 # Alvira
 ---
 
-IoT networking module based on the Socket respository
+IoT networking module based on the Scapy respository
