@@ -1,11 +1,116 @@
 #!/usr/bin/env python
 import sys, os, time, asyncio
-__version__ = "0.1.0 (Beta)"
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.fernet import Fernet
+__version__ = "0.1.1 (Beta)"
+
+
+
+def encrypt(plainText, password):
+    salt = os.urandom(16)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(password))
+    f = Fernet(key)
+    encrypted = f.encrypt(plainText)
+    return encrypted, salt
+
+def decrypt(cText, salt, password):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(password))
+    f = Fernet(key)
+    plainText = f.decrypt(cText)
+
+    return plainText
+
+
+def convVarType(var, t):
+    if t.lower() == "s": return str(var)
+    if t.lower() == "i": return int(var)
+    if t.lower() == "f": return float(var)
+    if t.lower() == "b":
+        if var.lower() == "true":
+            return True
+        elif var.lower() == "false":
+            return False
+        else:
+            return bool(var)
+    return var
+
+def unpackMetaStr(metaStr):
+    metaStr = metaStr.decode()
+    metaData = {}
+    while True:
+        if len(metaStr) == 0:
+            break
+        mLen = int(metaStr[:18])
+        metaStr = metaStr[18:]
+        firstVar = metaStr[:mLen]
+        firstVar = convVarType(firstVar[1:], firstVar[0])
+        metaStr = metaStr[mLen:]
+        mLen = int(metaStr[:18])
+        metaStr = metaStr[18:]
+        lastVar = metaStr[:mLen]
+        lastVar = convVarType(lastVar[1:], lastVar[0])
+        metaStr = metaStr[mLen:]
+        metaData[firstVar] = lastVar
+    return metaData
+
+def getMetaStr(metaData):
+    metaStr = ""
+    for i in metaData:
+        metaStr += str( len(str(i))+1 ).zfill(18) + str(i.__class__).split("'")[1][0] + str(i)
+        metaStr += str( len(str(metaData[i]))+1 ).zfill(18) + str(metaData[i].__class__).split("'")[1][0] + str(metaData[i])
+    return metaStr.encode()
+
+def prepData(data, metaData=None):
+    # Prepares the data to be sent
+    # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
+    # (ignore spaces)
+    if type(data) == str:
+        data = data.encode()
+    pData = ""
+    pData = b'DATA:|' + str(len(data)).encode().zfill(18) + data
+    if metaData:
+        pData = pData + b'META:|' + getMetaStr(metaData)
+    return pData
+
+def dissectData(data):
+    # Used after data is received to prepare it for later
+    rawData = ""
+    metaData = None
+    if data.startswith(b'DATA:|'):
+        data = data[6:]   # Remove "DATA:|"
+        dataLen = int(data[:18])   # Extract length of data
+        data = data[18:]   # Remove the data length
+        rawData = data[:dataLen]   # Get the raw data
+        metaStr = data[dataLen:]   # Get the meta-data (if any)
+        if metaStr != "":
+            if metaStr.startswith(b'META:|'):
+                metaStr = metaStr[6:]
+                # meta-data exists - convert to dictionary
+                metaData = unpackMetaStr(metaStr)
+    else:
+        return data, None, True
+    return rawData, metaData, False
 
 
 
 class Connection():
-    endChar = b'\t\t_END_\t\t'
+    sepChar = b'\n\t_SEPARATOR_\t\n'
 
     def __init__(self, addr, port, reader, writer):
         self.connectionTime = time.time()
@@ -14,15 +119,20 @@ class Connection():
         self.reader = reader
         self.writer = writer
 
-    async def sendData(self, data):
+    async def sendData(self, data, metaData=None):
         if type(data) == str:
             data = data.encode()
-        self.writer.write(data+self.endChar)
+        data = prepData(data, metaData=metaData)
+        data = data + self.sepChar
+        self.writer.write(data)
         await self.writer.drain()
+
+    def disconnect(self):
+        self.writer.close()
 
 
 class Host():
-    endChar = b'\t\t_END_\t\t'
+    sepChar = b'\n\t_SEPARATOR_\t\n'
 
     def __init__(self, addr, port, verbose=False, logging=False, logFile=None):
         self.running = False
@@ -46,7 +156,7 @@ class Host():
             sys.stdout.write(logText)
             sys.stdout.flush()
 
-    def gotData(self, client, data):
+    def gotData(self, client, data, metaData):
         pass
 
     def lostClient(self, client):
@@ -54,6 +164,14 @@ class Host():
 
     def newClient(self, client):
         pass
+
+    async def getData(self, client, reader, writer, length=100):
+        data = None
+        try:
+            data = await reader.read(length)
+        except:
+            print("Exception occurred")
+        return data
 
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
@@ -66,15 +184,19 @@ class Host():
         buffer = b''
 
         while self.running:
-            data = await reader.read(100)
+            data = await self.getData(client, reader, writer)
             if not data:
                 break
             buffer += data
-            while self.endChar in buffer:
-                message = buffer.split(self.endChar)[0]
-                self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(data)) )
-                self.gotData(client, message)
-                buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
+
+            for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
+                message = buffer.split(self.sepChar)[i]
+                #message = buffer.split(self.startChar)[1].split(self.endChar)[0]
+                #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
+                message, metaData, isRaw = dissectData(message)
+                self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
+                self.gotData(client, message, metaData)
+            buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
@@ -101,7 +223,7 @@ class Host():
 
 
 class Client():
-    endChar = b'\t\t_END_\t\t'
+    sepChar = b'\n\t_SEPARATOR_\t\n'
 
     def __init__(self):
         self.connected = False
@@ -111,7 +233,7 @@ class Client():
         self.hostPort = None
         self.conUpdated = time.time()   # Last time the connection status was changed
 
-    async def gotData(self, data):
+    async def gotData(self, data, metaData):
         pass
 
     def lostConnection(self):
@@ -120,43 +242,69 @@ class Client():
     def madeConnection(self):
         pass
 
-    async def getData(self):
+    async def getData(self, reader, writer, length=100):
+        data = None
+        try:
+            data = await reader.read(length)
+        except:
+            print("Exception occurred")
+        return data
+
+    async def handleHost(self):
         buffer = b''
 
         while self.connected and self.reader:
-            data = await self.reader.read(100)
+            data = await self.getData(self.reader, self.writer)
+            print("Data: {}".format(data))
             if not data:
+                self.connected = False
                 break
             buffer += data
-            while self.endChar in buffer:
-                message = buffer.split(self.endChar)[0]
-                #self.log( "Received Data | Host: {}:{} | Size: {}".format(self.hostAddr, self.hostPort, len(data)) )
-                await self.gotData(message)
-                buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
+
+            for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
+                message = buffer.split(self.sepChar)[i]
+                #message = buffer.split(self.startChar)[1].split(self.endChar)[0]
+                #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
+                #message = buffer.split(self.endChar)[0]
+                message, metaData, isRaw = dissectData(message)
+                await self.gotData(message, metaData)
+                #buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
+            buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
         return self.lostConnection
 
-    async def connect(self, hostAddr, hostPort, timeout=6):
+    async def handleSelf(self):
+        while self.connected:
+            await asyncio.sleep(0.2)
+        if not self.connected and self.reader:
+            self.reader.feed_data(self.sepChar)
+
+    async def connect(self, hostAddr, hostPort):
         try:
             self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort)
 
-            #fut = await asyncio.open_connection(hostAddr, hostPort, ssl=False)
-            #reader, writer = await asyncio.wait_for(fut, timeout=timeout)
-
-            #asyncio.run(self.getData())
             self.connected = True
             self.conUpdated = time.time()
             loop = asyncio.get_running_loop()
-            result = loop.call_soon_threadsafe(await self.getData())
+
+            #loop = asyncio.get_event_loop()
+            future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
+
+            result = loop.call_soon_threadsafe(await self.handleHost())
         except:
             self.connected = False
             self.conUpdated = time.time()
         self.connected = False
         self.conUpdated = time.time()
 
-    async def sendData(self, data):
+    async def sendData(self, data, metaData=None):
+        if not self.connected:
+            print("ERROR: Event loop not connected. Unable to send data")
+            return None
         if type(data) == str:
             data = data.encode()
-        self.writer.write(data+self.endChar)
+        data = prepData(data, metaData=metaData)
+        data = data + self.sepChar
+        self.writer.write(data)
         await self.writer.drain()
 
     def waitForConnection(self, timeout=None):
@@ -167,16 +315,23 @@ class Client():
                     break
         return self.connected
 
+    def disconnect(self):
+        if self.connected and self.writer:
+            self.writer.close()
+            self.connected = False
 
 
-def received(client, data):
-    print("Got Data - Size: {}".format(len(data)))
+
+def receivedText(client, data, metaData):
+    if data == b'exit': client.disconnect()
+    print("Data: {}".format(data))
+    print("Meta: {}".format(metaData))
 
 async def connection(client):
     await client.sendData("Thank you for connecting")
 
 if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=True)
-    x.gotData = received
+    x.gotData = receivedText
     x.newClient = connection
     x.start()
