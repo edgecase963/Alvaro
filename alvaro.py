@@ -55,6 +55,10 @@ class Host():
     def newClient(self, client):
         pass
 
+    async def getData(self, client, reader, writer, length=100):
+        data = await reader.read(length)
+        return data
+
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
         client = Connection(cliAddr[0], cliAddr[1], reader, writer)
@@ -66,13 +70,13 @@ class Host():
         buffer = b''
 
         while self.running:
-            data = await reader.read(100)
+            data = await self.getData(client, reader, writer)
             if not data:
                 break
             buffer += data
             while self.endChar in buffer:
                 message = buffer.split(self.endChar)[0]
-                self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(data)) )
+                self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(data)-len(self.endChar)) )
                 self.gotData(client, message)
                 buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
 
@@ -120,33 +124,32 @@ class Client():
     def madeConnection(self):
         pass
 
-    async def getData(self):
+    async def getData(self, reader, writer, length=100):
+        data = await reader.read(length)
+        return data
+
+    async def handleHost(self):
         buffer = b''
 
         while self.connected and self.reader:
-            data = await self.reader.read(100)
+            data = await self.getData(self.reader, self.writer)
             if not data:
                 break
             buffer += data
             while self.endChar in buffer:
                 message = buffer.split(self.endChar)[0]
-                #self.log( "Received Data | Host: {}:{} | Size: {}".format(self.hostAddr, self.hostPort, len(data)) )
                 await self.gotData(message)
                 buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
         return self.lostConnection
 
-    async def connect(self, hostAddr, hostPort, timeout=6):
+    async def connect(self, hostAddr, hostPort):
         try:
             self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort)
 
-            #fut = await asyncio.open_connection(hostAddr, hostPort, ssl=False)
-            #reader, writer = await asyncio.wait_for(fut, timeout=timeout)
-
-            #asyncio.run(self.getData())
             self.connected = True
             self.conUpdated = time.time()
             loop = asyncio.get_running_loop()
-            result = loop.call_soon_threadsafe(await self.getData())
+            result = loop.call_soon_threadsafe(await self.handleHost())
         except:
             self.connected = False
             self.conUpdated = time.time()
@@ -170,7 +173,7 @@ class Client():
 
 
 def received(client, data):
-    print("Got Data - Size: {}".format(len(data)))
+    pass
 
 async def connection(client):
     await client.sendData("Thank you for connecting")
