@@ -237,7 +237,6 @@ class Host():
         self.server.close()
 
 
-
 class Client():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
@@ -307,7 +306,6 @@ class Client():
             self.conUpdated = time.time()
             loop = asyncio.get_running_loop()
 
-            #loop = asyncio.get_event_loop()
             future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
 
             result = loop.call_soon_threadsafe(await self.handleHost())
