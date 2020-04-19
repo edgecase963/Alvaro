@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio
+import sys, os, time, asyncio, ssl
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -19,8 +19,8 @@ def encrypt(plainText, password):
     )
     key = base64.urlsafe_b64encode(kdf.derive(password))
     f = Fernet(key)
-    encrypted = f.encrypt(plainText)
-    return encrypted, salt
+    cText = f.encrypt(plainText)
+    return cText, salt
 
 def decrypt(cText, salt, password):
     kdf = PBKDF2HMAC(
@@ -156,13 +156,13 @@ class Host():
             sys.stdout.write(logText)
             sys.stdout.flush()
 
-    def gotData(self, client, data, metaData):
+    async def gotData(self, client, data, metaData):
         pass
 
-    def lostClient(self, client):
+    async def lostClient(self, client):
         pass
 
-    def newClient(self, client):
+    async def newClient(self, client):
         pass
 
     async def getData(self, client, reader, writer, length=100):
@@ -195,30 +195,43 @@ class Host():
                 #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
                 message, metaData, isRaw = dissectData(message)
                 self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
-                self.gotData(client, message, metaData)
+                await self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
         writer.close()
-        self.lostClient(client)
+        await self.lostClient(client)
 
-    async def main(self):
-        server = await asyncio.start_server(self.handleClient, self.addr, self.port)
-
-        addr = server.sockets[0].getsockname()
-
-        #await self.getData()
-
-        async with server:
-            await server.serve_forever()
-
-    def start(self):
+    async def start(self, useSSL=False, sslCert=None, sslKey=None):
         self.running = True
+        ssl_context = None
+
+        server = None
+
         if self.logging:
             if self.logFile == None: self.logFile = "log.txt"
-            self.log("Server Started")
-        asyncio.run(self.main())
+            self.log("Starting server...")
+
+        if useSSL and sslCert and sslKey:
+            if os.path.exists(sslCert) and os.path.exists(sslKey):
+                ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                ssl_context.load_cert_chain(sslCert, sslKey)
+
+                server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context)
+            else:
+                self.log("Unable to load certificate files")
+                return
+        else:
+            server = await asyncio.start_server(self.handleClient, self.addr, self.port)
+
+        if server:
+            self.log("Server started")
+            async with server:
+                await server.serve_forever()
+        else:
+            self.running = False
+            self.log("Unable to start server")
 
 
 
@@ -278,9 +291,18 @@ class Client():
         if not self.connected and self.reader:
             self.reader.feed_data(self.sepChar)
 
-    async def connect(self, hostAddr, hostPort):
+    async def connect(self, hostAddr, hostPort, useSSL=False, sslCert=None):
         try:
-            self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort)
+            ssl_context = None
+            if useSSL and sslCert:
+                if os.path.exists(sslCert):
+                    ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                    ssl_context.load_verify_locations(sslCert)
+
+            if ssl_context:
+                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort, ssl=ssl_context)
+            else:
+                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort)
 
             self.connected = True
             self.conUpdated = time.time()
@@ -322,7 +344,7 @@ class Client():
 
 
 
-def receivedText(client, data, metaData):
+async def receivedText(client, data, metaData):
     if data == b'exit': client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
@@ -334,4 +356,4 @@ if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=True)
     x.gotData = receivedText
     x.newClient = connection
-    x.start()
+    asyncio.run( x.start() )
