@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio, ssl
+import sys, os, time, asyncio, ssl, concurrent, pickle
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -109,6 +109,59 @@ def dissectData(data):
 
 
 
+class User():
+    def __init__(self, username):
+        self.username = username
+        self.cPass = None
+        self.password = None   # This stays at `None` until the user is verified
+        hasPassword = False
+        verified = False
+
+        self.connections = []
+
+        self.loginAttempts = []
+
+    def copy(self):
+        userCopy = User(self.username)
+        userCopy.cPass = self.cPass
+        userCopy.hasPassword = self.hasPassword
+        userCopy.loginAttempts = self.loginAttempts
+        return userCopy
+
+    def save(self, userDir):
+        try:
+            with open( os.path.join(userDir, username), "wb" ) as f:
+                pickle.dump(self.copy(), f)
+            return True
+        except:
+            return False
+
+    def verify(self, password):
+        if self.hasPassword
+            if self.cPass and password:
+                if password == decrypt(self.cPass[0], self.cPass[1], password):
+                    return True
+            else:
+                return False
+        else:
+            return True
+
+    def login(self, username, password, connection):
+        if username == self.username and self.verify(password):
+            self.connections.append(connection)
+            self.password = password
+            return True
+        else:
+            self.loginAttempts.append( [time.time(), connection.addr+"|"+str(connection.port)] )
+            return False
+
+    def addPassword(self, password, userDir):
+        if not self.hasPassword:
+            cText, salt = encrypt(password, password)
+            self.cPass = [cText, salt]
+        return self
+
+
 class Connection():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
@@ -120,6 +173,8 @@ class Connection():
         self.writer = writer
 
     async def sendData(self, data, metaData=None):
+        if type(data) != str and type(data) != bytes:
+            data = str(data)
         if type(data) == str:
             data = data.encode()
         data = prepData(data, metaData=metaData)
@@ -140,6 +195,8 @@ class Host():
         self.port = port
         self.clients = []
         self.verbose = verbose
+
+        self.userPath = "users"
 
         self.logging = logging
         self.logFile = logFile
@@ -212,6 +269,10 @@ class Host():
         if self.logging:
             if self.logFile == None: self.logFile = "log.txt"
             self.log("Starting server...")
+
+        if not os.path.exists(self.userPath):
+            self.log("Creating user directory")
+            os.path.mkdir(self.userPath)
 
         if useSSL and sslCert and sslKey:
             if os.path.exists(sslCert) and os.path.exists(sslKey):
@@ -322,6 +383,8 @@ class Client():
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
+        if type(data) != str and type(data) != bytes:
+            data = str(data)
         if type(data) == str:
             data = data.encode()
         data = prepData(data, metaData=metaData)

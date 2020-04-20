@@ -25,6 +25,6 @@ if __name__ == "__main__":
 
         while cli.connected:
             inp = input("Inp: ")
-            asyncio.run( cli.sendData(inp, metaData={"From Client?": "YES!"}) )
+            asyncio.run( cli.sendData(inp, metaData={"From Client?": 1}) )
     else:
         print("Failure to connect")
