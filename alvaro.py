@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio, ssl, concurrent
+import sys, os, time, asyncio, ssl
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.2.0 (Beta)"
+__version__ = "0.1.1 (Beta)"
 
 
 
@@ -156,13 +156,13 @@ class Host():
             sys.stdout.write(logText)
             sys.stdout.flush()
 
-    async def gotData(self, host, client, data, metaData):
+    async def gotData(self, client, data, metaData):
         pass
 
-    async def lostClient(self, host, client):
+    async def lostClient(self, client):
         pass
 
-    async def newClient(self, host, client):
+    async def newClient(self, client):
         pass
 
     async def getData(self, client, reader, writer, length=100):
@@ -179,7 +179,7 @@ class Host():
         self.clients.append(client)
 
         self.log("New Connection: {}:{}".format(client.addr, client.port))
-        await self.newClient(self, client)
+        await self.newClient(client)
 
         buffer = b''
 
@@ -191,21 +191,23 @@ class Host():
 
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
+                #message = buffer.split(self.startChar)[1].split(self.endChar)[0]
+                #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
                 message, metaData, isRaw = dissectData(message)
                 self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
-                await self.gotData(self, client, message, metaData)
+                await self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
         writer.close()
-        await self.lostClient(self, client)
+        await self.lostClient(client)
 
     async def start(self, useSSL=False, sslCert=None, sslKey=None):
         self.running = True
         ssl_context = None
 
-        self.server = None
+        server = None
 
         if self.logging:
             if self.logFile == None: self.logFile = "log.txt"
@@ -216,25 +218,21 @@ class Host():
                 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 ssl_context.load_cert_chain(sslCert, sslKey)
 
-                self.server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context)
+                server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context)
             else:
-                self.log("Certificate files not found")
+                self.log("Unable to load certificate files")
                 return
         else:
-            self.server = await asyncio.start_server(self.handleClient, self.addr, self.port)
+            server = await asyncio.start_server(self.handleClient, self.addr, self.port)
 
-        if self.server:
+        if server:
             self.log("Server started")
-            async with self.server:
-                await self.server.serve_forever()
+            async with server:
+                await server.serve_forever()
         else:
             self.running = False
             self.log("Unable to start server")
 
-    def stop(self):
-        self.log("Stopping server...")
-        self.running = False
-        self.server.close()
 
 
 class Client():
@@ -278,8 +276,12 @@ class Client():
 
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
+                #message = buffer.split(self.startChar)[1].split(self.endChar)[0]
+                #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
+                #message = buffer.split(self.endChar)[0]
                 message, metaData, isRaw = dissectData(message)
                 await self.gotData(message, metaData)
+                #buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
         return self.lostConnection
 
@@ -306,6 +308,7 @@ class Client():
             self.conUpdated = time.time()
             loop = asyncio.get_running_loop()
 
+            #loop = asyncio.get_event_loop()
             future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
 
             result = loop.call_soon_threadsafe(await self.handleHost())
@@ -341,21 +344,16 @@ class Client():
 
 
 
-async def receivedText(host, client, data, metaData):
+async def receivedText(client, data, metaData):
     if data == b'exit': client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
-    host.stop()
 
-async def connection(host, client):
+async def connection(client):
     await client.sendData("Thank you for connecting")
-    print(host)
 
 if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=True)
     x.gotData = receivedText
     x.newClient = connection
-    try:
-        asyncio.run( x.start() )
-    except concurrent.futures._base.CancelledError:
-        print("Server cancelled")
+    asyncio.run( x.start() )
