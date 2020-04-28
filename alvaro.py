@@ -4,7 +4,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.3.0 (Beta)"
+__version__ = "0.3.1 (Beta)"
 
 
 
@@ -295,7 +295,7 @@ class Host():
     async def newClient(self, client):
         pass
 
-    async def getData(self, client, reader, writer, length=100):
+    async def getData(self, client, reader, writer, length=600):
         data = None
         try:
             data = await reader.read(length)
@@ -421,10 +421,10 @@ class Client():
     async def gotData(self, data, metaData):
         pass
 
-    def lostConnection(self):
+    async def lostConnection(self):
         pass
 
-    def madeConnection(self):
+    async def madeConnection(self):
         pass
 
     async def getData(self, reader, writer, length=100):
@@ -458,6 +458,8 @@ class Client():
     async def handleHost(self):
         buffer = b''
 
+        await self.madeConnection()
+
         while self.connected and self.reader:
             data = await self.getData(self.reader, self.writer)
             if not data:
@@ -477,7 +479,7 @@ class Client():
                     await self.gotData(message, metaData)
                 #buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
-        return self.lostConnection
+        return await self.lostConnection
 
     async def handleSelf(self):
         while self.connected:
