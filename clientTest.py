@@ -13,18 +13,19 @@ if __name__ == "__main__":
 
     cli.lostConnection = lostConnection
 
-    target = lambda: asyncio.run( cli.connect("localhost", 8888) )
+    target = lambda: asyncio.run( cli.connect("localhost", 8888, useSSL=False, sslCert=None, login=("admin", "test123")) )
 
     cliThread = threading.Thread(target=target)
     cliThread.start()
 
     c = cli.waitForConnection(timeout=6)
+    c = cli.waitForLogin(timeout=6)
 
     if c:
         print("Connected!")
 
         while cli.connected:
             inp = input("Inp: ")
-            asyncio.run( cli.sendData(inp, metaData={"From Client?": "YES!"}) )
+            asyncio.run( cli.sendData(inp, metaData={"From Client?": 1}) )
     else:
         print("Failure to connect")
