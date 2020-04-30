@@ -4,7 +4,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.3.1 (Beta)"
+__version__ = "0.3.2 (Beta)"
 
 
 
@@ -330,6 +330,9 @@ class Host():
         client = Connection(cliAddr[0], cliAddr[1], reader, writer)
         self.clients.append(client)
 
+        if self.loginRequired and not client.verifiedUser:
+            await client.sendRaw(b'login required')
+
         self.log("New Connection: {}:{}".format(client.addr, client.port))
         await self.newClient(client)
 
@@ -339,8 +342,6 @@ class Host():
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout:
                     client.disconnect()
-                else:
-                    await client.sendRaw(b'login required')
             data = await self.getData(client, reader, writer)
             if not data:
                 break
@@ -469,15 +470,11 @@ class Client():
 
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
-                #message = buffer.split(self.startChar)[1].split(self.endChar)[0]
-                #buffer = buffer[ len(corrData) + len(self.startChar) + len(message) + len(self.endChar): ]
-                #message = buffer.split(self.endChar)[0]
                 message, metaData, isRaw = dissectData(message)
                 if isRaw:
                     await self.gotRawData(message)
                 else:
                     await self.gotData(message, metaData)
-                #buffer = buffer[len(buffer.split(self.endChar)[0])+len(self.endChar):]
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
         return await self.lostConnection
 
@@ -575,6 +572,6 @@ async def connection(client):
 if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=True, loginRequired=True)
     x.addUser("admin", password="test123")
-    #x.gotData = receivedText
+    x.gotData = receivedText
     x.newClient = connection
     asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )

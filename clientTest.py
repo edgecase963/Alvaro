@@ -4,14 +4,23 @@ import alvaro
 
 
 
-def lostConnection():
+async def lostConnection():
     print("Connection Lost!")
+
+async def gotMessage(data, metaData):
+    print("Got Message: {}".format(data))
+    print("Meta-Data:   {}\n".format(metaData))
+
+async def connected():
+    print("Connected!")
 
 
 if __name__ == "__main__":
     cli = alvaro.Client()
 
     cli.lostConnection = lostConnection
+    cli.gotData = gotMessage
+    cli.madeConnection = connected
 
     target = lambda: asyncio.run( cli.connect("localhost", 8888, useSSL=False, sslCert=None, login=("admin", "test123")) )
 
@@ -22,7 +31,7 @@ if __name__ == "__main__":
     c = cli.waitForLogin(timeout=6)
 
     if c:
-        print("Connected!")
+        print("Logged in!")
 
         while cli.connected:
             inp = input("Inp: ")
