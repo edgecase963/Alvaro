@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import sys, os, time, asyncio, ssl, concurrent, pickle, base64, cryptography
+from threading import Thread
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.3.2 (Beta)"
+__version__ = "0.4.0 (Beta)"
 
 
 
@@ -101,9 +102,8 @@ def dissectData(data):
         rawData = data[:dataLen]   # Get the raw data
         metaStr = data[dataLen:]   # Get the meta-data (if any)
         if metaStr != "":
-            if metaStr.startswith(b'META:|'):
-                metaStr = metaStr[6:]
-                # meta-data exists - convert to dictionary
+            if metaStr.startswith(b'META:|'):   # Received Meta-Data
+                metaStr = metaStr[6:]   # Convert Meta-Data to dictionary
                 metaData = unpackMetaStr(metaStr)
     else:
         return data, None, True
@@ -230,7 +230,7 @@ class Connection():
 class Host():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
-    def __init__(self, addr, port, verbose=False, logging=False, logFile=None, loginRequired=False):
+    def __init__(self, addr, port, verbose=False, logging=False, logFile=None, loginRequired=False, multithreading=True):
         self.running = False
         self.addr = addr
         self.port = port
@@ -239,6 +239,9 @@ class Host():
         self.loginRequired = loginRequired
         self.loginTimeout = 12.   # The amount of time to wait for a login before disconnecting the client (if logins are required)
         self.loginDelay = 1.
+        self.multithreading = multithreading
+
+        self.lock = asyncio.Lock()
 
         self.userPath = "users"
         self.users = {}
@@ -246,6 +249,17 @@ class Host():
 
         self.logging = logging
         self.logFile = logFile
+
+    def __start_loop__(self, loop, task, finishFunc):
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete( asyncio.ensure_future(task()) )
+        if finishFunc:
+            asyncio.run(finishFunc())
+
+    def newLoop(self, task, finishFunc=None):
+        new_loop = asyncio.new_event_loop()
+        t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
+        t.start()
 
     def loadUsers(self):
         for i in os.listdir(self.userPath):
@@ -274,7 +288,8 @@ class Host():
         else:
             return False
 
-    def log(self, t):
+    async def log(self, t):
+        await self.lock.acquire()
         if type(t) == bytes: t = t.decode()
         logText = "[{}] {}\n".format(time.time(), t)
         if self.logging:
@@ -285,6 +300,7 @@ class Host():
         if self.verbose:
             sys.stdout.write(logText)
             sys.stdout.flush()
+        self.lock.release()
 
     async def gotData(self, client, data, metaData):
         pass
@@ -299,8 +315,8 @@ class Host():
         data = None
         try:
             data = await reader.read(length)
-        except:
-            print("Exception occurred")
+        except Exception as e:
+            await self.log( str(e) + " - {}:{}".format(client.addr, client.port) )
         return data
 
     async def gotRawData(self, client, data):
@@ -311,19 +327,19 @@ class Host():
                 data = data[6:]
                 username, password = data.split("|")
                 if username in self.users:
-                    self.log("Login acquired - verifying...")
+                    await self.log("Login acquired - verifying...")
                     user = self.users[username]
                     time.sleep(self.loginDelay)
                     if user.login(username, password, client):
-                        self.log("{} logged in".format(username))
+                        await self.log("{} logged in".format(username))
                         await client.sendRaw(b'login accepted')
                     else:
-                        self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
+                        await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
                         client.disconnect()
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
-                self.log("User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port))
+                await self.log("User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port))
 
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
@@ -333,7 +349,7 @@ class Host():
         if self.loginRequired and not client.verifiedUser:
             await client.sendRaw(b'login required')
 
-        self.log("New Connection: {}:{}".format(client.addr, client.port))
+        await self.log("New Connection: {}:{}".format(client.addr, client.port))
         await self.newClient(client)
 
         buffer = b''
@@ -350,7 +366,7 @@ class Host():
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
                 message, metaData, isRaw = dissectData(message)
-                self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
+                await self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
 
                 if isRaw:
                     await self.gotRawData(client, message)
@@ -358,7 +374,7 @@ class Host():
                     await self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
-        self.log("Lost Connection: {}:{}".format(client.addr, client.port))
+        await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
         writer.close()
         client.logout()
@@ -372,43 +388,43 @@ class Host():
 
         if self.logging:
             if self.logFile == None: self.logFile = "log.txt"
-            self.log("Starting server...")
+            await self.log("Starting server...")
 
         if not os.path.exists(self.userPath):
-            self.log("Creating user directory")
+            await self.log("Creating user directory")
             os.mkdir(self.userPath)
-        self.log("Loading users...")
+        await self.log("Loading users...")
         self.loadUsers()
-        self.log("Users loaded")
+        await self.log("Users loaded")
 
         if useSSL and sslCert and sslKey:
-            self.log("Loading SSL certificate...")
+            await self.log("Loading SSL certificate...")
             if os.path.exists(sslCert) and os.path.exists(sslKey):
                 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 ssl_context.load_cert_chain(sslCert, sslKey)
-                self.log("SSL certificate loaded")
+                await self.log("SSL certificate loaded")
 
                 server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context)
             else:
-                self.log("Unable to load certificate files")
+                await self.log("Unable to load certificate files")
                 return
         else:
             server = await asyncio.start_server(self.handleClient, self.addr, self.port)
 
         if server:
-            self.log("Server started")
+            await self.log("Server started")
             async with server:
                 await server.serve_forever()
         else:
             self.running = False
-            self.log("Unable to start server")
+            await self.log("Unable to start server")
 
 
 
 class Client():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
-    def __init__(self):
+    def __init__(self, multithreading=False):
         self.connected = False
         self.reader = None
         self.writer = None
@@ -416,8 +432,20 @@ class Client():
         self.hostPort = None
         self.conUpdated = time.time()   # Last time the connection status was changed
         self.login = (None, None)
+        self.multithreading = multithreading
 
-        self.loggedIn = False
+        self.verifiedUser = False
+
+    def __start_loop__(self, loop, task, finishFunc):
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete( asyncio.ensure_future(task()) )
+        if finishFunc:
+            asyncio.run(finishFunc())
+
+    def newLoop(self, task, finishFunc=None):
+        new_loop = asyncio.new_event_loop()
+        t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
+        t.start()
 
     async def gotData(self, data, metaData):
         pass
@@ -428,7 +456,10 @@ class Client():
     async def madeConnection(self):
         pass
 
-    async def getData(self, reader, writer, length=100):
+    async def loggedIn(self):
+        pass
+
+    async def getData(self, reader, writer, length=600):
         data = None
         try:
             data = await reader.read(length)
@@ -451,7 +482,8 @@ class Client():
                     password = password.encode()
                 await self.sendRaw(b'LOGIN:'+username+b'|'+password)
         if data == b'login accepted':
-            self.loggedIn = True
+            self.verifiedUser = True
+            await self.loggedIn()
 
     async def logout(self):
         await self.sendRaw(b'logout')
@@ -459,7 +491,10 @@ class Client():
     async def handleHost(self):
         buffer = b''
 
-        await self.madeConnection()
+        if self.multithreading:
+            self.newLoop(task=self.madeConnection)
+        else:
+            await self.madeConnection()
 
         while self.connected and self.reader:
             data = await self.getData(self.reader, self.writer)
@@ -474,7 +509,10 @@ class Client():
                 if isRaw:
                     await self.gotRawData(message)
                 else:
-                    await self.gotData(message, metaData)
+                    if self.multithreading:
+                        self.newLoop(task=lambda: self.gotData(self, message, metaData))
+                    else:
+                        await self.gotData(self, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
         return await self.lostConnection
 
@@ -502,7 +540,6 @@ class Client():
             self.conUpdated = time.time()
             loop = asyncio.get_running_loop()
 
-            #loop = asyncio.get_event_loop()
             future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
 
             result = loop.call_soon_threadsafe(await self.handleHost())
@@ -547,11 +584,11 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.loggedIn:
+        while not self.verifiedUser:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
-        return self.loggedIn
+        return self.verifiedUser
 
     def disconnect(self):
         if self.connected and self.writer:
@@ -564,7 +601,6 @@ async def receivedText(client, data, metaData):
     if data == b'exit': client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
-    print(client.currentUser.connections)
 
 async def connection(client):
     await client.sendData("Thank you for connecting")

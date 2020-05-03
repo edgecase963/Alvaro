@@ -76,7 +76,8 @@ Interchangeable functions for a server:
 Interchangeable functions for a client:
 * `madeConnection()`
 * `lostConnection()`
-* `gotData(data, metaData)`
+* `loggedIn()`
+* `gotData(client, data, metaData)`
 
 
 
@@ -90,13 +91,13 @@ import alvaro, asyncio
 
 async def gotMessage(client, data, metaData):
     print( "Message: {}".format(data) )
-    
+
     if metaData["whoami"] == "client":
         print("MetaData transferred successfully!")
 
 async def newClient(client):
     print( "New connection from {}".format(client.addr) )
-    
+
     client.sendData( "Hello, World!", metaData={"whoami": "server"} )
 
 server = alvaro.Host("localhost", 8888)
@@ -119,4 +120,50 @@ import alvaro, asyncio
 server = alvaro.Host("hostname.com", 8888)
 
 asyncio.run( server.start(useSSL=True, sslCert="path/to/cert.crt", sslKey="path/to/key.key") )
+```
+
+
+
+### Integrated multithreading
+Alvaro also has built-in multithreading support which you can take advantage of for both servers and clients.
+To do so, simply run the `newLoop` function with a given task, like so:
+
+```
+import alvaro
+
+async def testFunc():
+    print("Hello, World!")
+
+serv = alvaro.Host("localhost", 8888)
+serv.newLoop(testFunc)
+```
+Output:
+> Hello, World!
+
+Note: The function you have assigned should have the `async` tag
+
+The `newLoop` function will create a new asyncio loop and run which ever function you assigned to it in a separate thread. It is also possible to tell Alvaro to automatically run all callbacks, such as `gotData` and `madeConnection` in another thread by changing the `multithreading` variable to `True` in the Host class or Client class:
+```
+serv = alvaro.Host("localhost", 8888, multithreading=True)
+
+cli = alvaro.Client(multithreading=True)
+```
+Note: The `multithreading` variable is already set as `True` for the Host and `False` for the Client by default.
+
+This tells Alvaro to open a new thread and run the functions you've assigned for receiving data, connecting, logging in, etc.
+This could potentially help with speed depending on which device you are using Alvaro on. For smaller devices (such as IoT devices like the Raspberry Pi) it is recommended to keep the `multithreading` variable to `False`. That will tell Alvaro to run all callbacks in the main thread.
+
+The `newLoop` function for both the `Host` and `Client` classes also provides a `finishFunc` option. This function will be executed once the thread has finished its task.
+
+```
+import alvaro
+
+async def testFunc():
+    print("Hello, World!")
+
+async def finished():
+    print("Finished test!")
+
+serv = alvaro.Host("localhost", 8888)
+serv.newLoop(testFunc, finishFunc=finished)
 ```
