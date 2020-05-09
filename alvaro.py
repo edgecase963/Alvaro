@@ -121,7 +121,10 @@ class User():
         self.connections = []
 
         self.loginHistory = []
+        # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+
         self.loginAttempts = []
+        # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
 
     def reset(self):
         self.password = None
@@ -159,12 +162,12 @@ class User():
             if not connection in self.connections:
                 self.connections.append(connection)
             self.password = password
-            self.loginHistory.append( [ time.time(), connection.addr+"|"+str(connection.port) ] )
+            self.loginHistory.append( [ time.time(), connection.addr ] )
             connection.verifiedUser = True
             connection.currentUser = self
             return True
         else:
-            self.loginAttempts.append( [ time.time(), connection.addr+"|"+str(connection.port) ] )
+            self.loginAttempts.append( [ time.time(), connection.addr ] )
             return False
 
     def logout(self, client):
@@ -189,12 +192,14 @@ class User():
 class Connection():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
-    def __init__(self, addr, port, reader, writer):
+    def __init__(self, addr, port, reader, writer, server):
         self.connectionTime = time.time()
         self.addr = addr
         self.port = port
         self.reader = reader
         self.writer = writer
+
+        self.server = server
 
         self.verifiedUser = False
         self.currentUser = None
@@ -210,17 +215,24 @@ class Connection():
         await self.writer.drain()
 
     async def sendRaw(self, data):
-        if type(data) != str and type(data) != bytes:
-            data = str(data)
-        if type(data) == str:
-            data = data.encode()
-        data = data + self.sepChar
-        self.writer.write(data)
-        await self.writer.drain()
+        try:
+            if type(data) != str and type(data) != bytes:
+                data = str(data)
+            if type(data) == str:
+                data = data.encode()
+            data = data + self.sepChar
+            self.writer.write(data)
+            await self.writer.drain()
+        except ConnectionResetError:
+            pass
 
-    def disconnect(self):
+    async def disconnect(self):
+        await self.sendRaw("disconnect")
         self.writer.close()
         self.logout()
+
+    async def blacklist(self, bTime=600):
+        await self.server.blacklistIP(self.addr, bTime=bTime)
 
     def logout(self):
         if self.currentUser:
@@ -238,8 +250,20 @@ class Host():
         self.verbose = verbose
         self.loginRequired = loginRequired
         self.loginTimeout = 12.   # The amount of time to wait for a login before disconnecting the client (if logins are required)
-        self.loginDelay = 1.
+        self.loginDelay = 0.6
         self.multithreading = multithreading
+
+        self.loginAttempts = []
+        # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+
+        self.blacklistThreshold = 1800   # (In seconds)
+        # If too many login attempts are made within this threshold, the address will be blacklisted
+        # 1800 = 30 minutes
+
+        self.blacklistLimit = 6
+
+        self.blacklist = {}
+        # Structure: {<IP_address>: <time.time()>}
 
         self.lock = asyncio.Lock()
 
@@ -311,6 +335,16 @@ class Host():
     async def newClient(self, client):
         pass
 
+    async def blacklisted(self, addr):
+        pass
+
+    async def blacklistIP(self, addr, bTime=600):
+        self.blacklist[addr] = time.time()+bTime
+        await self.log("Blacklisted {} for {} seconds".format(addr, bTime))
+        for client in self.clients:
+            if client.addr == addr:
+                await client.disconnect()
+
     async def getData(self, client, reader, writer, length=600):
         data = None
         try:
@@ -335,7 +369,12 @@ class Host():
                         await client.sendRaw(b'login accepted')
                     else:
                         await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
-                        client.disconnect()
+                        self.loginAttempts.append( [time.time(), client.addr] )
+
+                        if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
+                            await self.blacklistIP(client.addr)
+
+                        await client.disconnect()
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
@@ -343,13 +382,22 @@ class Host():
 
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
-        client = Connection(cliAddr[0], cliAddr[1], reader, writer)
+        client = Connection(cliAddr[0], cliAddr[1], reader, writer, self)
         self.clients.append(client)
+
+        await self.log("New Connection: {}:{}".format(client.addr, client.port))
+
+        if client.addr in self.blacklist:
+            if self.blacklist[client.addr] < time.time():
+                self.blacklist.pop(client.addr)
+            else:
+                await self.log("{} is blacklisted - disconnecting...".format(client.addr))
+                await client.disconnect()
+                return
 
         if self.loginRequired and not client.verifiedUser:
             await client.sendRaw(b'login required')
 
-        await self.log("New Connection: {}:{}".format(client.addr, client.port))
         await self.newClient(client)
 
         buffer = b''
@@ -357,7 +405,7 @@ class Host():
         while self.running:
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout:
-                    client.disconnect()
+                    await client.disconnect()
             data = await self.getData(client, reader, writer)
             if not data:
                 break
@@ -366,7 +414,6 @@ class Host():
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
                 message, metaData, isRaw = dissectData(message)
-                await self.log( "Received Data | Client: {}:{} | Size: {}".format(client.addr, client.port, len(message)) )
 
                 if isRaw:
                     await self.gotRawData(client, message)
@@ -433,6 +480,7 @@ class Client():
         self.conUpdated = time.time()   # Last time the connection status was changed
         self.login = (None, None)
         self.multithreading = multithreading
+        self.gotDisconnect = False
 
         self.verifiedUser = False
 
@@ -484,6 +532,8 @@ class Client():
         if data == b'login accepted':
             self.verifiedUser = True
             await self.loggedIn()
+        if data == b'disconnect':
+            self.gotDisconnect = True
 
     async def logout(self):
         await self.sendRaw(b'logout')
@@ -524,6 +574,7 @@ class Client():
 
     async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None):
         self.login = login
+        self.gotDisconnect = False
         try:
             ssl_context = None
             if useSSL and sslCert:
@@ -584,7 +635,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser:
+        while not self.verifiedUser and not self.gotDisconnect:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
@@ -598,9 +649,11 @@ class Client():
 
 
 async def receivedText(client, data, metaData):
-    if data == b'exit': client.disconnect()
+    if data == b'exit':
+        await client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
+    print("From: {}".format(client.currentUser.username))
 
 async def connection(client):
     await client.sendData("Thank you for connecting")

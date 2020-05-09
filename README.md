@@ -156,7 +156,7 @@ This could potentially help with speed depending on which device you are using A
 The `newLoop` function for both the `Host` and `Client` classes also provides a `finishFunc` option. This function will be executed once the thread has finished its task.
 
 ```
-import alvaro
+import alvaro, asyncio
 
 async def testFunc():
     print("Hello, World!")
@@ -167,3 +167,20 @@ async def finished():
 serv = alvaro.Host("localhost", 8888)
 serv.newLoop(testFunc, finishFunc=finished)
 ```
+
+
+### Blacklisting
+Alvaro servers also have the ability to blacklist an IP address so that all connections from that address are refused.
+
+```
+import alvaro, asyncio
+
+
+async def connection(client):
+    await client.blacklist()
+
+
+serv = alvaro.Host("localhost", 8888)
+serv.newLoop(testFunc, finishFunc=finished)
+```
+Of course it is not ideal to blacklist an IP immediately once it connects for no reason, but this function has its uses.
