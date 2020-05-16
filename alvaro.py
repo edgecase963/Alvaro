@@ -511,8 +511,8 @@ class Client():
         data = None
         try:
             data = await reader.read(length)
-        except:
-            print("Exception occurred")
+        except Exception as e:
+            print("ERROR: {}".format(e))
         return data
 
     async def gotRawData(self, data):
@@ -564,7 +564,7 @@ class Client():
                     else:
                         await self.gotData(self, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
-        return await self.lostConnection
+        return self.lostConnection
 
     async def handleSelf(self):
         while self.connected:
@@ -594,7 +594,8 @@ class Client():
             future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
 
             result = loop.call_soon_threadsafe(await self.handleHost())
-        except:
+        except Exception as e:
+            print("ERROR: {}".format(e))
             self.connected = False
             self.conUpdated = time.time()
         self.connected = False
