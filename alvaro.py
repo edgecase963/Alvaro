@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio, ssl, concurrent, pickle, base64, cryptography
+import sys, os, time, random, asyncio, ssl, concurrent, pickle, base64, cryptography
 from threading import Thread
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -39,6 +39,14 @@ def decrypt(cText, salt, password):
     except cryptography.fernet.InvalidToken:
         return False
 
+
+def newStreamID(streams):
+    pN = random.randint(1000000, 9999999)
+    while "p{}".format(pN).encode() in streams:
+        pN += 1
+        if pN > 9999999:
+            pN = random.randint(1000000, 9999999)
+    return "p{}".format(pN).encode()
 
 def convVarType(var, t):
     if t.lower() == "s": return str(var)
