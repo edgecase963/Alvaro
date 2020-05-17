@@ -293,7 +293,7 @@ class Host():
         t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
         t.start()
 
-    def loadUsers(self):
+    async def loadUsers(self):
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
             if os.path.isfile( iPath ):
@@ -304,7 +304,7 @@ class Host():
                 except:
                     pass
 
-    def saveUsers(self):
+    async def saveUsers(self):
         for uName in self.users:
             self.users[uName].save(self.userPath)
 
@@ -426,7 +426,10 @@ class Host():
                 if isRaw:
                     await self.gotRawData(client, message)
                 elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
-                    await self.gotData(client, message, metaData)
+                    if self.multithreading:
+                        self.newLoop(task=lambda: self.gotData(client, message, metaData))
+                    else:
+                        await self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
@@ -449,7 +452,7 @@ class Host():
             await self.log("Creating user directory")
             os.mkdir(self.userPath)
         await self.log("Loading users...")
-        self.loadUsers()
+        await self.loadUsers()
         await self.log("Users loaded")
 
         if useSSL and sslCert and sslKey:
