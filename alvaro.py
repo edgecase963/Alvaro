@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.4.2 (Beta)"
+__version__ = "0.4.3 (Beta)"
 
 
 
@@ -323,7 +323,7 @@ class Host():
     async def log(self, t):
         await self.lock.acquire()
         if type(t) == bytes: t = t.decode()
-        logText = "[{}] {}\n".format(time.time(), t)
+        logText = "[{}]\t{}\n".format(time.time(), t)
         if self.logging:
             if not os.path.exists(self.logFile):
                 with open(self.logFile, "wb") as f: pass   # Create the path
@@ -383,6 +383,9 @@ class Host():
                             await self.blacklistIP(client.addr)
 
                         await client.disconnect()
+                else:
+                    await self.log("Login Failed - Username '{}' not recognized".format(username))
+                    await client.sendRaw(b'login failed')
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
@@ -492,6 +495,7 @@ class Client():
         self.login = (None, None)
         self.multithreading = multithreading
         self.gotDisconnect = False
+        self.loginFailed = False
 
         self.verifiedUser = False
 
@@ -543,6 +547,8 @@ class Client():
         if data == b'login accepted':
             self.verifiedUser = True
             await self.loggedIn()
+        if data == b'login failed':
+            self.loginFailed = True
         if data == b'disconnect':
             self.gotDisconnect = True
 
@@ -586,6 +592,7 @@ class Client():
     async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None):
         self.login = login
         self.gotDisconnect = False
+        self.loginFailed = False
         try:
             ssl_context = None
             if useSSL and sslCert:
@@ -647,7 +654,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser and not self.gotDisconnect:
+        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
