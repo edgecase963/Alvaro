@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio, ssl, concurrent, pickle, base64, cryptography
+import sys, os, time, random, asyncio, ssl, concurrent, pickle, base64, cryptography
 from threading import Thread
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.4.2 (Beta)"
+__version__ = "0.4.3 (Beta)"
 
 
 
@@ -39,6 +39,14 @@ def decrypt(cText, salt, password):
     except cryptography.fernet.InvalidToken:
         return False
 
+
+def newStreamID(streams):
+    pN = random.randint(1000000, 9999999)
+    while "p{}".format(pN).encode() in streams:
+        pN += 1
+        if pN > 9999999:
+            pN = random.randint(1000000, 9999999)
+    return "p{}".format(pN).encode()
 
 def convVarType(var, t):
     if t.lower() == "s": return str(var)
@@ -285,7 +293,7 @@ class Host():
         t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
         t.start()
 
-    def loadUsers(self):
+    async def loadUsers(self):
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
             if os.path.isfile( iPath ):
@@ -296,7 +304,7 @@ class Host():
                 except:
                     pass
 
-    def saveUsers(self):
+    async def saveUsers(self):
         for uName in self.users:
             self.users[uName].save(self.userPath)
 
@@ -315,7 +323,7 @@ class Host():
     async def log(self, t):
         await self.lock.acquire()
         if type(t) == bytes: t = t.decode()
-        logText = "[{}] {}\n".format(time.time(), t)
+        logText = "[{}]\t{}\n".format(time.time(), t)
         if self.logging:
             if not os.path.exists(self.logFile):
                 with open(self.logFile, "wb") as f: pass   # Create the path
@@ -375,6 +383,9 @@ class Host():
                             await self.blacklistIP(client.addr)
 
                         await client.disconnect()
+                else:
+                    await self.log("Login Failed - Username '{}' not recognized".format(username))
+                    await client.sendRaw(b'login failed')
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
@@ -418,7 +429,10 @@ class Host():
                 if isRaw:
                     await self.gotRawData(client, message)
                 elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
-                    await self.gotData(client, message, metaData)
+                    if self.multithreading:
+                        self.newLoop(task=lambda: self.gotData(client, message, metaData))
+                    else:
+                        await self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
@@ -441,7 +455,7 @@ class Host():
             await self.log("Creating user directory")
             os.mkdir(self.userPath)
         await self.log("Loading users...")
-        self.loadUsers()
+        await self.loadUsers()
         await self.log("Users loaded")
 
         if useSSL and sslCert and sslKey:
@@ -481,6 +495,7 @@ class Client():
         self.login = (None, None)
         self.multithreading = multithreading
         self.gotDisconnect = False
+        self.loginFailed = False
 
         self.verifiedUser = False
 
@@ -532,6 +547,8 @@ class Client():
         if data == b'login accepted':
             self.verifiedUser = True
             await self.loggedIn()
+        if data == b'login failed':
+            self.loginFailed = True
         if data == b'disconnect':
             self.gotDisconnect = True
 
@@ -575,6 +592,7 @@ class Client():
     async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None):
         self.login = login
         self.gotDisconnect = False
+        self.loginFailed = False
         try:
             ssl_context = None
             if useSSL and sslCert:
@@ -636,7 +654,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser and not self.gotDisconnect:
+        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
