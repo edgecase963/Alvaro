@@ -305,8 +305,10 @@ class Host():
                     pass
 
     async def saveUsers(self):
+        await self.lock.acquire()
         for uName in self.users:
             self.users[uName].save(self.userPath)
+        self.lock.release()
 
     def addUser(self, username, password=None):
         user = User(username)
@@ -672,7 +674,7 @@ async def receivedText(client, data, metaData):
         await client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
-    print("From: {}".format(client.currentUser.username))
+
 
 async def connection(client):
     await client.sendData("Thank you for connecting")
