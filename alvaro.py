@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.4.3 (Beta)"
+__version__ = "0.4.4 (Beta)"
 
 
 
@@ -515,7 +515,7 @@ class Client():
     async def gotData(self, data, metaData):
         pass
 
-    async def lostConnection(self):
+    def lostConnection(self):
         pass
 
     async def madeConnection(self):
