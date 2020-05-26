@@ -123,6 +123,26 @@ asyncio.run( server.start(useSSL=True, sslCert="path/to/cert.crt", sslKey="path/
 ```
 
 
+#### SSL Client Usage
+```
+import alvaro, asyncio
+from threading import Thread
+
+client = alvaro.Client()
+
+t = lambda: asyncio.run(
+    client.connect("localhost", 8888,
+        useSSL=True,
+        sslCert="my_cert.crt")
+    )
+
+cThread = Thread( target = t )
+cThread.start()
+
+c = client.waitForConnection( timeout=6 )
+```
+
+
 
 ### Integrated multithreading
 Alvaro also has built-in multithreading support which you can take advantage of for both servers and clients.

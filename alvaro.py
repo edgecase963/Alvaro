@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.4.3 (Beta)"
+__version__ = "0.4.4 (Beta)"
 
 
 
@@ -305,8 +305,10 @@ class Host():
                     pass
 
     async def saveUsers(self):
+        await self.lock.acquire()
         for uName in self.users:
             self.users[uName].save(self.userPath)
+        self.lock.release()
 
     def addUser(self, username, password=None):
         user = User(username)
@@ -513,7 +515,7 @@ class Client():
     async def gotData(self, data, metaData):
         pass
 
-    async def lostConnection(self):
+    def lostConnection(self):
         pass
 
     async def madeConnection(self):
@@ -672,7 +674,7 @@ async def receivedText(client, data, metaData):
         await client.disconnect()
     print("Data: {}".format(data))
     print("Meta: {}".format(metaData))
-    print("From: {}".format(client.currentUser.username))
+
 
 async def connection(client):
     await client.sendData("Thank you for connecting")

@@ -4,7 +4,7 @@ import alvaro
 
 
 
-async def lostConnection():
+def lostConnection():
     print("Connection Lost!")
 
 async def gotMessage(client, data, metaData):
