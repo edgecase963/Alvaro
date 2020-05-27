@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.4.4 (Beta)"
+__version__ = "0.5.0 (Beta)"
 
 
 
@@ -134,6 +134,23 @@ class User():
         self.loginAttempts = []
         # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
 
+    def encryptData(self, data):
+        if self.hasPassword and self.password:
+            cData, salt = encrypt(data, self.password.encode())
+            data = salt+cData
+            return data
+        else:
+            return data
+
+    def decryptData(self, data):
+        if self.hasPassword and self.password:
+            salt = data[:16]
+            cData = data[16:]
+            data = decrypt(cData, salt, self.password.encode())
+            return data
+        else:
+            return data
+
     def reset(self):
         self.password = None
         self.connections = []
@@ -212,22 +229,30 @@ class Connection():
         self.verifiedUser = False
         self.currentUser = None
 
-    async def sendData(self, data, metaData=None):
+    async def sendData(self, data, metaData=None, enc=True):
         if type(data) != str and type(data) != bytes:
             data = str(data)
         if type(data) == str:
             data = data.encode()
         data = prepData(data, metaData=metaData)
+
+        if self.verifiedUser and enc:
+            data = self.currentUser.encryptData(data)
+
         data = data + self.sepChar
         self.writer.write(data)
         await self.writer.drain()
 
-    async def sendRaw(self, data):
+    async def sendRaw(self, data, enc=True):
         try:
             if type(data) != str and type(data) != bytes:
                 data = str(data)
             if type(data) == str:
                 data = data.encode()
+
+            if self.verifiedUser and enc:
+                data = self.currentUser.encryptData(data)
+
             data = data + self.sepChar
             self.writer.write(data)
             await self.writer.drain()
@@ -376,7 +401,7 @@ class Host():
                     time.sleep(self.loginDelay)
                     if user.login(username, password, client):
                         await self.log("{} logged in".format(username))
-                        await client.sendRaw(b'login accepted')
+                        await client.sendRaw(b'login accepted', enc=False)
                     else:
                         await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
                         self.loginAttempts.append( [time.time(), client.addr] )
@@ -426,6 +451,8 @@ class Host():
 
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
+                if client.verifiedUser:
+                    message = client.currentUser.decryptData(message)
                 message, metaData, isRaw = dissectData(message)
 
                 if isRaw:
@@ -512,6 +539,23 @@ class Client():
         t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
         t.start()
 
+    def encryptData(self, data):
+        if self.login[1]:
+            cData, salt = encrypt(data, self.login[1].encode())
+            data = salt+cData
+            return data
+        else:
+            return data
+
+    def decryptData(self, data):
+        if self.login[1]:
+            salt = data[:16]
+            cData = data[16:]
+            data = decrypt(cData, salt, self.login[1].encode())
+            return data
+        else:
+            return data
+
     async def gotData(self, data, metaData):
         pass
 
@@ -574,6 +618,8 @@ class Client():
 
             for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
                 message = buffer.split(self.sepChar)[i]
+                if self.login[1] and self.verifiedUser:
+                    self.decryptData(message)
                 message, metaData, isRaw = dissectData(message)
                 if isRaw:
                     await self.gotRawData(message)
@@ -630,6 +676,8 @@ class Client():
         if type(data) == str:
             data = data.encode()
         data = prepData(data, metaData=metaData)
+        if self.login[1] and self.verifiedUser:
+            data = self.encryptData(data)
         data = data + self.sepChar
         self.writer.write(data)
         await self.writer.drain()
@@ -642,6 +690,8 @@ class Client():
             data = str(data)
         if type(data) == str:
             data = data.encode()
+        if self.login[1] and self.verifiedUser:
+            data = self.encryptData(data)
         data = data + self.sepChar
         self.writer.write(data)
         await self.writer.drain()
