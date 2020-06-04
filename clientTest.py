@@ -7,11 +7,11 @@ import alvaro
 def lostConnection():
     print("Connection Lost!")
 
-async def gotMessage(client, data, metaData):
+def gotMessage(client, data, metaData):
     print("Got Message: {}".format(data))
     print("Meta-Data:   {}\n".format(metaData))
 
-async def connected():
+def connected():
     print("Connected!")
 
 
@@ -36,6 +36,6 @@ if __name__ == "__main__":
 
         while cli.connected:
             inp = input("Inp: ")
-            asyncio.run( cli.sendData(inp, metaData={"From Client?": 1}) )
+            cli.sendData(inp, metaData={"From Client?": 1})
     else:
         print("Failure to connect")

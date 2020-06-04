@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.5.0 (Beta)"
+__version__ = "0.6.0 (Beta)"
 
 
 
@@ -229,7 +229,7 @@ class Connection():
         self.verifiedUser = False
         self.currentUser = None
 
-    async def sendData(self, data, metaData=None, enc=True):
+    async def send_data(self, data, metaData=None, enc=True):
         if type(data) != str and type(data) != bytes:
             data = str(data)
         if type(data) == str:
@@ -243,7 +243,11 @@ class Connection():
         self.writer.write(data)
         await self.writer.drain()
 
-    async def sendRaw(self, data, enc=True):
+    def sendData(self, data, metaData=None, enc=True):
+        if self.server.loop:
+            asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData, enc=enc), self.server.loop )
+
+    async def send_raw(self, data, enc=True):
         try:
             if type(data) != str and type(data) != bytes:
                 data = str(data)
@@ -259,13 +263,18 @@ class Connection():
         except ConnectionResetError:
             pass
 
-    async def disconnect(self):
-        await self.sendRaw("disconnect")
+    def sendRaw(self, data, enc=True):
+        if self.server.loop:
+            asyncio.run_coroutine_threadsafe( self.send_raw(data, enc=enc), self.server.loop )
+
+    def disconnect(self):
+        self.sendRaw("disconnect")
         self.writer.close()
         self.logout()
 
-    async def blacklist(self, bTime=600):
-        await self.server.blacklistIP(self.addr, bTime=bTime)
+    def blacklist(self, bTime=600):
+        if self.server.loop:
+            asyncio.run_coroutine_threadsafe( self.server.blacklistIP(self.addr, bTime=bTime), self.server.loop )
 
     def logout(self):
         if self.currentUser:
@@ -285,6 +294,7 @@ class Host():
         self.loginTimeout = 12.   # The amount of time to wait for a login before disconnecting the client (if logins are required)
         self.loginDelay = 0.6
         self.multithreading = multithreading
+        self.loop = None
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -361,16 +371,16 @@ class Host():
             sys.stdout.flush()
         self.lock.release()
 
-    async def gotData(self, client, data, metaData):
+    def gotData(self, client, data, metaData):
         pass
 
-    async def lostClient(self, client):
+    def lostClient(self, client):
         pass
 
-    async def newClient(self, client):
+    def newClient(self, client):
         pass
 
-    async def blacklisted(self, addr):
+    def blacklisted(self, addr):
         pass
 
     async def blacklistIP(self, addr, bTime=600):
@@ -378,7 +388,7 @@ class Host():
         await self.log("Blacklisted {} for {} seconds".format(addr, bTime))
         for client in self.clients:
             if client.addr == addr:
-                await client.disconnect()
+                client.disconnect()
 
     async def getData(self, client, reader, writer, length=600):
         data = None
@@ -401,7 +411,7 @@ class Host():
                     time.sleep(self.loginDelay)
                     if user.login(username, password, client):
                         await self.log("{} logged in".format(username))
-                        await client.sendRaw(b'login accepted', enc=False)
+                        client.sendRaw(b'login accepted', enc=False)
                     else:
                         await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
                         self.loginAttempts.append( [time.time(), client.addr] )
@@ -409,10 +419,10 @@ class Host():
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
                             await self.blacklistIP(client.addr)
 
-                        await client.disconnect()
+                        client.disconnect()
                 else:
                     await self.log("Login Failed - Username '{}' not recognized".format(username))
-                    await client.sendRaw(b'login failed')
+                    client.sendRaw(b'login failed')
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
@@ -430,20 +440,20 @@ class Host():
                 self.blacklist.pop(client.addr)
             else:
                 await self.log("{} is blacklisted - disconnecting...".format(client.addr))
-                await client.disconnect()
+                client.disconnect()
                 return
 
         if self.loginRequired and not client.verifiedUser:
-            await client.sendRaw(b'login required')
+            client.sendRaw(b'login required')
 
-        await self.newClient(client)
+        self.newClient(client)
 
         buffer = b''
 
         while self.running:
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout:
-                    await client.disconnect()
+                    client.disconnect()
             data = await self.getData(client, reader, writer)
             if not data:
                 break
@@ -461,18 +471,19 @@ class Host():
                     if self.multithreading:
                         self.newLoop(task=lambda: self.gotData(client, message, metaData))
                     else:
-                        await self.gotData(client, message, metaData)
+                        self.gotData(client, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
         writer.close()
         client.logout()
-        await self.lostClient(client)
+        self.lostClient(client)
 
     async def start(self, useSSL=False, sslCert=None, sslKey=None):
         self.running = True
         ssl_context = None
+        self.loop = asyncio.get_running_loop()
 
         server = None
 
@@ -525,6 +536,7 @@ class Client():
         self.multithreading = multithreading
         self.gotDisconnect = False
         self.loginFailed = False
+        self.loop = None
 
         self.verifiedUser = False
 
@@ -556,16 +568,16 @@ class Client():
         else:
             return data
 
-    async def gotData(self, data, metaData):
+    def gotData(self, data, metaData):
         pass
 
     def lostConnection(self):
         pass
 
-    async def madeConnection(self):
+    def madeConnection(self):
         pass
 
-    async def loggedIn(self):
+    def loggedIn(self):
         pass
 
     async def getData(self, reader, writer, length=600):
@@ -589,17 +601,17 @@ class Client():
                     password = str(password)
                 if type(password) == str:
                     password = password.encode()
-                await self.sendRaw(b'LOGIN:'+username+b'|'+password)
+                self.sendRaw(b'LOGIN:'+username+b'|'+password)
         if data == b'login accepted':
             self.verifiedUser = True
-            await self.loggedIn()
+            self.loggedIn()
         if data == b'login failed':
             self.loginFailed = True
         if data == b'disconnect':
             self.gotDisconnect = True
 
     async def logout(self):
-        await self.sendRaw(b'logout')
+        self.sendRaw(b'logout')
 
     async def handleHost(self):
         buffer = b''
@@ -607,7 +619,7 @@ class Client():
         if self.multithreading:
             self.newLoop(task=self.madeConnection)
         else:
-            await self.madeConnection()
+            self.madeConnection()
 
         while self.connected and self.reader:
             data = await self.getData(self.reader, self.writer)
@@ -627,7 +639,7 @@ class Client():
                     if self.multithreading:
                         self.newLoop(task=lambda: self.gotData(self, message, metaData))
                     else:
-                        await self.gotData(self, message, metaData)
+                        self.gotData(self, message, metaData)
             buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
         return self.lostConnection
 
@@ -655,11 +667,11 @@ class Client():
 
             self.connected = True
             self.conUpdated = time.time()
-            loop = asyncio.get_running_loop()
+            self.loop = asyncio.get_running_loop()
 
-            future = asyncio.run_coroutine_threadsafe(self.handleSelf(), loop)
+            future = asyncio.run_coroutine_threadsafe(self.handleSelf(), self.loop)
 
-            result = loop.call_soon_threadsafe(await self.handleHost())
+            result = self.loop.call_soon_threadsafe(await self.handleHost())
         except Exception as e:
             print("ERROR: {}".format(e))
             self.connected = False
@@ -667,7 +679,7 @@ class Client():
         self.connected = False
         self.conUpdated = time.time()
 
-    async def sendData(self, data, metaData=None):
+    async def send_data(self, data, metaData=None):
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
@@ -682,7 +694,11 @@ class Client():
         self.writer.write(data)
         await self.writer.drain()
 
-    async def sendRaw(self, data):
+    def sendData(self, data, metaData=None):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
+
+    async def send_raw(self, data):
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
@@ -695,6 +711,10 @@ class Client():
         data = data + self.sepChar
         self.writer.write(data)
         await self.writer.drain()
+
+    def sendRaw(self, data):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe( self.send_raw(data), self.loop )
 
     def waitForConnection(self, timeout=None):
         startTime = time.time()
@@ -719,15 +739,15 @@ class Client():
 
 
 
-async def receivedText(client, data, metaData):
+def receivedText(client, data, metaData):
     if data == b'exit':
-        await client.disconnect()
-    print("Data: {}".format(data))
-    print("Meta: {}".format(metaData))
+        client.disconnect()
+    print("Data Length: {}".format( len(data) ))
+    print("Meta:        {}".format(metaData))
 
 
-async def connection(client):
-    await client.sendData("Thank you for connecting")
+def connection(client):
+    client.sendData("Thank you for connecting")
 
 if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=True, loginRequired=True)
