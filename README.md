@@ -48,10 +48,10 @@ Alvaro is also capable of executing blocks of code that you assign after certain
 import alvaro, asyncio
 
 
-async def gotMessage(client, data, metaData):
+def gotMessage(client, data, metaData):
     print( "Message: {}".format(data) )
 
-async def newClient(client):
+def newClient(client):
     print( "New connection from {}".format(client.addr) )
     client.sendData("Hello, World!")
 
@@ -65,8 +65,6 @@ asyncio.run( server.start() )
 ```
 
 When the chunk of code shown above is executed it will start a server on `localhost` (at port `8888`) and execute the `gotMessage` function when ever it receives data from a client. For every client that connects, the `newClient` function will be executed.
-
-Due to the fact that Alvaro uses asyncio, a lot of the event functions it will execute require the `async` tag with that block of code.
 
 Interchangeable functions for a server:
 * `lostClient(client)`
@@ -89,13 +87,13 @@ MetaData comes in the form of a dictionary variable and lets you describe what t
 ```
 import alvaro, asyncio
 
-async def gotMessage(client, data, metaData):
+def gotMessage(client, data, metaData):
     print( "Message: {}".format(data) )
 
     if metaData["whoami"] == "client":
         print("MetaData transferred successfully!")
 
-async def newClient(client):
+def newClient(client):
     print( "New connection from {}".format(client.addr) )
 
     client.sendData( "Hello, World!", metaData={"whoami": "server"} )
@@ -196,8 +194,8 @@ Alvaro servers also have the ability to blacklist an IP address so that all conn
 import alvaro, asyncio
 
 
-async def connection(client):
-    await client.blacklist()
+def connection(client):
+    client.blacklist()
 
 
 serv = alvaro.Host("localhost", 8888)
