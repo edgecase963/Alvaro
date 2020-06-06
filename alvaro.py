@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.0 (Beta)"
+__version__ = "0.6.1 (Beta)"
 
 
 
@@ -383,6 +383,9 @@ class Host():
     def blacklisted(self, addr):
         pass
 
+    def loggedIn(self, client, user):
+        pass
+
     async def blacklistIP(self, addr, bTime=600):
         self.blacklist[addr] = time.time()+bTime
         await self.log("Blacklisted {} for {} seconds".format(addr, bTime))
@@ -412,6 +415,7 @@ class Host():
                     if user.login(username, password, client):
                         await self.log("{} logged in".format(username))
                         client.sendRaw(b'login accepted', enc=False)
+                        self.loggedIn(client, user)
                     else:
                         await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
                         self.loginAttempts.append( [time.time(), client.addr] )
@@ -448,7 +452,7 @@ class Host():
 
         self.newClient(client)
 
-        buffer = b''
+        client.buffer = b''
 
         while self.running:
             if self.loginRequired and not client.verifiedUser:
@@ -457,10 +461,10 @@ class Host():
             data = await self.getData(client, reader, writer)
             if not data:
                 break
-            buffer += data
+            client.buffer += data
 
-            for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
-                message = buffer.split(self.sepChar)[i]
+            for i in [  x for x in range(len( client.buffer.split(self.sepChar) )-1)  ]:
+                message = client.buffer.split(self.sepChar)[i]
                 if client.verifiedUser:
                     message = client.currentUser.decryptData(message)
                 message, metaData, isRaw = dissectData(message)
@@ -472,7 +476,7 @@ class Host():
                         self.newLoop(task=lambda: self.gotData(client, message, metaData))
                     else:
                         self.gotData(client, message, metaData)
-            buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
+            client.buffer = client.buffer.split(self.sepChar)[len(client.buffer.split(self.sepChar))-1]
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
@@ -537,6 +541,7 @@ class Client():
         self.gotDisconnect = False
         self.loginFailed = False
         self.loop = None
+        self.buffer = b''
 
         self.verifiedUser = False
 
@@ -614,8 +619,6 @@ class Client():
         self.sendRaw(b'logout')
 
     async def handleHost(self):
-        buffer = b''
-
         if self.multithreading:
             self.newLoop(task=self.madeConnection)
         else:
@@ -626,10 +629,10 @@ class Client():
             if not data:
                 self.connected = False
                 break
-            buffer += data
+            self.buffer += data
 
-            for i in [  x for x in range(len( buffer.split(self.sepChar) )-1)  ]:
-                message = buffer.split(self.sepChar)[i]
+            for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
+                message = self.buffer.split(self.sepChar)[i]
                 if self.login[1] and self.verifiedUser:
                     self.decryptData(message)
                 message, metaData, isRaw = dissectData(message)
@@ -640,7 +643,7 @@ class Client():
                         self.newLoop(task=lambda: self.gotData(self, message, metaData))
                     else:
                         self.gotData(self, message, metaData)
-            buffer = buffer.split(self.sepChar)[len(buffer.split(self.sepChar))-1]
+            self.buffer = self.buffer.split(self.sepChar)[len(self.buffer.split(self.sepChar))-1]
         return self.lostConnection
 
     async def handleSelf(self):
