@@ -70,7 +70,7 @@ Interchangeable functions for a server:
 * `lostClient(client)`
 * `newClient(client)`
 * `gotData(client, data, metaData)`
-* 'loggedIn(client, user)'
+* `loggedIn(client, user)`
 
 Interchangeable functions for a client:
 * `madeConnection()`
