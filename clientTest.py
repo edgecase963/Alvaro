@@ -36,6 +36,6 @@ if __name__ == "__main__":
 
         while cli.connected:
             inp = input("Inp: ")
-            cli.sendData(inp, metaData={"From Client?": 1})
+            cli.sendData(inp, metaData={"From Client?": "Yes"})
     else:
         print("Failure to connect")
