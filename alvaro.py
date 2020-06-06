@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.1 (Beta)"
+__version__ = "0.6.2 (Beta)"
 
 
 
@@ -473,7 +473,7 @@ class Host():
                     await self.gotRawData(client, message)
                 elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
                     if self.multithreading:
-                        self.newLoop(task=lambda: self.gotData(client, message, metaData))
+                        Thread(target = self.gotData, args=[client, message, metaData]).start()
                     else:
                         self.gotData(client, message, metaData)
             client.buffer = client.buffer.split(self.sepChar)[len(client.buffer.split(self.sepChar))-1]
@@ -620,7 +620,7 @@ class Client():
 
     async def handleHost(self):
         if self.multithreading:
-            self.newLoop(task=self.madeConnection)
+            Thread(target=self.madeConnection).start()
         else:
             self.madeConnection()
 
@@ -640,7 +640,7 @@ class Client():
                     await self.gotRawData(message)
                 else:
                     if self.multithreading:
-                        self.newLoop(task=lambda: self.gotData(self, message, metaData))
+                        Thread(target=self.gotData, args=[self, message, metaData]).start()
                     else:
                         self.gotData(self, message, metaData)
             self.buffer = self.buffer.split(self.sepChar)[len(self.buffer.split(self.sepChar))-1]
