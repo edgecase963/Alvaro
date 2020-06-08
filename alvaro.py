@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.2 (Beta)"
+__version__ = "0.6.3 (Beta)"
 
 
 
@@ -229,6 +229,8 @@ class Connection():
         self.verifiedUser = False
         self.currentUser = None
 
+        self.encData = True
+
     async def send_data(self, data, metaData=None, enc=True):
         if type(data) != str and type(data) != bytes:
             data = str(data)
@@ -245,7 +247,10 @@ class Connection():
 
     def sendData(self, data, metaData=None, enc=True):
         if self.server.loop:
-            asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData, enc=enc), self.server.loop )
+            try:
+                asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData, enc=enc), self.server.loop )
+            except Exception as e:
+                print("ERROR: {}".format(e))
 
     async def send_raw(self, data, enc=True):
         try:
@@ -265,7 +270,10 @@ class Connection():
 
     def sendRaw(self, data, enc=True):
         if self.server.loop:
-            asyncio.run_coroutine_threadsafe( self.send_raw(data, enc=enc), self.server.loop )
+            try:
+                asyncio.run_coroutine_threadsafe( self.send_raw(data, enc=enc), self.server.loop )
+            except Exception as e:
+                print("ERROR: {}".format(e))
 
     def disconnect(self):
         self.sendRaw("disconnect")
@@ -427,6 +435,12 @@ class Host():
                 else:
                     await self.log("Login Failed - Username '{}' not recognized".format(username))
                     client.sendRaw(b'login failed')
+        if data.startswith("encData:"):
+            await self.log("{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]))
+            if data.split(":")[1] == "True":
+                client.encData = True
+            elif data.split(":")[1] == "False":
+                client.encData = False
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
@@ -465,17 +479,18 @@ class Host():
 
             for i in [  x for x in range(len( client.buffer.split(self.sepChar) )-1)  ]:
                 message = client.buffer.split(self.sepChar)[i]
-                if client.verifiedUser:
+                if client.verifiedUser and client.encData:
                     message = client.currentUser.decryptData(message)
-                message, metaData, isRaw = dissectData(message)
+                if message:
+                    message, metaData, isRaw = dissectData(message)
 
-                if isRaw:
-                    await self.gotRawData(client, message)
-                elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
-                    if self.multithreading:
-                        Thread(target = self.gotData, args=[client, message, metaData]).start()
-                    else:
-                        self.gotData(client, message, metaData)
+                    if isRaw:
+                        await self.gotRawData(client, message)
+                    elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
+                        if self.multithreading:
+                            Thread(target = self.gotData, args=[client, message, metaData]).start()
+                        else:
+                            self.gotData(client, message, metaData)
             client.buffer = client.buffer.split(self.sepChar)[len(client.buffer.split(self.sepChar))-1]
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
@@ -544,6 +559,16 @@ class Client():
         self.buffer = b''
 
         self.verifiedUser = False
+        self.encData = True
+
+    async def SET_USER_ENC_DATA(self, newValue):
+        self.encData = newValue
+
+    def setUserEncrypt(self, newValue):
+        if type(newValue) == bool and self.loop:
+            sData = "encData:{}".format(str(newValue))
+            self.sendRaw(sData)
+            asyncio.run_coroutine_threadsafe( self.SET_USER_ENC_DATA(newValue), self.loop )
 
     def __start_loop__(self, loop, task, finishFunc):
         asyncio.set_event_loop(loop)
@@ -610,6 +635,10 @@ class Client():
         if data == b'login accepted':
             self.verifiedUser = True
             self.loggedIn()
+            if not self.encData:
+                self.encData = True
+                await self.send_raw("encData:False")
+                self.encData = False
         if data == b'login failed':
             self.loginFailed = True
         if data == b'disconnect':
@@ -691,7 +720,7 @@ class Client():
         if type(data) == str:
             data = data.encode()
         data = prepData(data, metaData=metaData)
-        if self.login[1] and self.verifiedUser:
+        if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
         data = data + self.sepChar
         self.writer.write(data)
@@ -699,7 +728,10 @@ class Client():
 
     def sendData(self, data, metaData=None):
         if self.loop:
-            asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
+            try:
+                asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
+            except Exception as e:
+                print("ERROR: {}".format(e))
 
     async def send_raw(self, data):
         if not self.connected:
@@ -709,7 +741,7 @@ class Client():
             data = str(data)
         if type(data) == str:
             data = data.encode()
-        if self.login[1] and self.verifiedUser:
+        if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
         data = data + self.sepChar
         self.writer.write(data)
@@ -717,7 +749,10 @@ class Client():
 
     def sendRaw(self, data):
         if self.loop:
-            asyncio.run_coroutine_threadsafe( self.send_raw(data), self.loop )
+            try:
+                asyncio.run_coroutine_threadsafe( self.send_raw(data), self.loop )
+            except Exception as e:
+                print("ERROR: {}".format(e))
 
     def waitForConnection(self, timeout=None):
         startTime = time.time()
