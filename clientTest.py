@@ -29,7 +29,7 @@ if __name__ == "__main__":
     cliThread.start()
 
     c = cli.waitForConnection(timeout=6)
-    c = cli.waitForLogin(timeout=6)
+    li = cli.waitForLogin(timeout=6)
 
     if c:
         print("Logged in!")
