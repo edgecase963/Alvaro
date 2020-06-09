@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.3 (Beta)"
+__version__ = "0.6.4 (Beta)"
 
 
 
@@ -561,14 +561,13 @@ class Client():
         self.verifiedUser = False
         self.encData = True
 
-    async def SET_USER_ENC_DATA(self, newValue):
-        self.encData = newValue
-
     def setUserEncrypt(self, newValue):
+        async def SET_USER_ENCD(self, newValue):
+            self.encData = newValue
         if type(newValue) == bool and self.loop:
             sData = "encData:{}".format(str(newValue))
             self.sendRaw(sData)
-            asyncio.run_coroutine_threadsafe( self.SET_USER_ENC_DATA(newValue), self.loop )
+            asyncio.run_coroutine_threadsafe( SET_USER_ENCD(self, newValue), self.loop )
 
     def __start_loop__(self, loop, task, finishFunc):
         asyncio.set_event_loop(loop)
@@ -663,15 +662,16 @@ class Client():
             for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
                 message = self.buffer.split(self.sepChar)[i]
                 if self.login[1] and self.verifiedUser:
-                    self.decryptData(message)
-                message, metaData, isRaw = dissectData(message)
-                if isRaw:
-                    await self.gotRawData(message)
-                else:
-                    if self.multithreading:
-                        Thread(target=self.gotData, args=[self, message, metaData]).start()
+                    message = self.decryptData(message)
+                if message:
+                    message, metaData, isRaw = dissectData(message)
+                    if isRaw:
+                        await self.gotRawData(message)
                     else:
-                        self.gotData(self, message, metaData)
+                        if self.multithreading:
+                            Thread(target=self.gotData, args=[self, message, metaData]).start()
+                        else:
+                            self.gotData(self, message, metaData)
             self.buffer = self.buffer.split(self.sepChar)[len(self.buffer.split(self.sepChar))-1]
         return self.lostConnection
 
