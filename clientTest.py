@@ -14,6 +14,9 @@ def gotMessage(client, data, metaData):
 def connected():
     print("Connected!")
 
+def downloading():
+    print("Download started...")
+
 
 
 if __name__ == "__main__":
@@ -22,6 +25,7 @@ if __name__ == "__main__":
     cli.lostConnection = lostConnection
     cli.gotData = gotMessage
     cli.madeConnection = connected
+    cli.downloadStarted = downloading
 
     target = lambda: asyncio.run( cli.connect("localhost", 8888, useSSL=False, sslCert=None, login=("admin", "test123")) )
 
@@ -29,9 +33,11 @@ if __name__ == "__main__":
     cliThread.start()
 
     c = cli.waitForConnection(timeout=6)
+    if c: print("Connected!")
+
     li = cli.waitForLogin(timeout=6)
 
-    if c:
+    if c and li:
         print("Logged in!")
 
         while cli.connected:
