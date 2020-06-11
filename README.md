@@ -71,12 +71,14 @@ Interchangeable functions for a server:
 * `newClient(client)`
 * `gotData(client, data, metaData)`
 * `loggedIn(client, user)`
+* `downloadStarted(client)`
 
 Interchangeable functions for a client:
 * `madeConnection()`
 * `lostConnection()`
 * `loggedIn()`
 * `gotData(client, data, metaData)`
+* `downloadStarted()`
 
 
 

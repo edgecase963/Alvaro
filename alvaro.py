@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.4 (Beta)"
+__version__ = "0.6.5 (Beta)"
 
 
 
@@ -304,6 +304,8 @@ class Host():
         self.multithreading = multithreading
         self.loop = None
 
+        self.downloading = False
+
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
 
@@ -392,6 +394,9 @@ class Host():
         pass
 
     def loggedIn(self, client, user):
+        pass
+
+    def downloadStarted(self, client):
         pass
 
     async def blacklistIP(self, addr, bTime=600):
@@ -492,6 +497,12 @@ class Host():
                         else:
                             self.gotData(client, message, metaData)
             client.buffer = client.buffer.split(self.sepChar)[len(client.buffer.split(self.sepChar))-1]
+            if client.buffer:
+                if self.downloading == False:
+                    self.downloading = True
+                    Thread(target=self.downloadStarted, args=[client]).start()
+            else:
+                self.downloading = False
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
@@ -557,6 +568,7 @@ class Client():
         self.loginFailed = False
         self.loop = None
         self.buffer = b''
+        self.downloading = False
 
         self.verifiedUser = False
         self.encData = True
@@ -607,6 +619,9 @@ class Client():
         pass
 
     def loggedIn(self):
+        pass
+
+    def downloadStarted(self):
         pass
 
     async def getData(self, reader, writer, length=600):
@@ -673,6 +688,12 @@ class Client():
                         else:
                             self.gotData(self, message, metaData)
             self.buffer = self.buffer.split(self.sepChar)[len(self.buffer.split(self.sepChar))-1]
+            if self.buffer:
+                if self.downloading == False:
+                    self.downloading = True
+                    Thread(target=self.downloadStarted).start()
+            else:
+                self.downloading = False
         return self.lostConnection
 
     async def handleSelf(self):
