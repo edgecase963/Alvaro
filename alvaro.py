@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.5 (Beta)"
+__version__ = "0.6.6 (Beta)"
 
 
 
@@ -49,13 +49,14 @@ def newStreamID(streams):
     return "p{}".format(pN).encode()
 
 def convVarType(var, t):
-    if t.lower() == "s": return str(var)
-    if t.lower() == "i": return int(var)
-    if t.lower() == "f": return float(var)
-    if t.lower() == "b":
-        if var.lower() == "true":
+    t = t.lower(); var = var.lower()
+    if t == "s": return str(var)
+    if t == "i": return int(var)
+    if t == "f": return float(var)
+    if t == "b":
+        if var == "true":
             return True
-        elif var.lower() == "false":
+        elif var == "false":
             return False
         else:
             return bool(var)
@@ -430,7 +431,7 @@ class Host():
                         client.sendRaw(b'login accepted', enc=False)
                         self.loggedIn(client, user)
                     else:
-                        await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
+                        await self.log("Failed login attempt - {} - {}:{}".format(username, client.addr, client.port))
                         self.loginAttempts.append( [time.time(), client.addr] )
 
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
@@ -785,7 +786,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed:
+        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed and self.connected:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
