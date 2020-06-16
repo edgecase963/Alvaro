@@ -40,14 +40,6 @@ def decrypt(cText, salt, password):
         return False
 
 
-def newStreamID(streams):
-    pN = random.randint(1000000, 9999999)
-    while "p{}".format(pN).encode() in streams:
-        pN += 1
-        if pN > 9999999:
-            pN = random.randint(1000000, 9999999)
-    return "p{}".format(pN).encode()
-
 def convVarType(var, t):
     if t.lower() == "s": return str(var)
     if t.lower() == "i": return int(var)
