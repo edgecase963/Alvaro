@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.5 (Beta)"
+__version__ = "0.6.7 (Beta)"
 
 
 
@@ -49,13 +49,14 @@ def newStreamID(streams):
     return "p{}".format(pN).encode()
 
 def convVarType(var, t):
-    if t.lower() == "s": return str(var)
-    if t.lower() == "i": return int(var)
-    if t.lower() == "f": return float(var)
-    if t.lower() == "b":
-        if var.lower() == "true":
+    t = t.lower(); var = var.lower()
+    if t == "s": return str(var)
+    if t == "i": return int(var)
+    if t == "f": return float(var)
+    if t == "b":
+        if var == "true":
             return True
-        elif var.lower() == "false":
+        elif var == "false":
             return False
         else:
             return bool(var)
@@ -303,6 +304,7 @@ class Host():
         self.loginDelay = 0.6
         self.multithreading = multithreading
         self.loop = None
+        self.chunkSize = 1024
 
         self.downloading = False
 
@@ -406,10 +408,10 @@ class Host():
             if client.addr == addr:
                 client.disconnect()
 
-    async def getData(self, client, reader, writer, length=600):
+    async def getData(self, client, reader, writer):
         data = None
         try:
-            data = await reader.read(length)
+            data = await reader.read(self.chunkSize)
         except Exception as e:
             await self.log( str(e) + " - {}:{}".format(client.addr, client.port) )
         return data
@@ -430,7 +432,7 @@ class Host():
                         client.sendRaw(b'login accepted', enc=False)
                         self.loggedIn(client, user)
                     else:
-                        await self.log("Failed login attempt - {} | {} - {}:{}".format(username, password, client.addr, client.port))
+                        await self.log("Failed login attempt - {} - {}:{}".format(username, client.addr, client.port))
                         self.loginAttempts.append( [time.time(), client.addr] )
 
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
@@ -483,6 +485,7 @@ class Host():
             client.buffer += data
 
             for i in [  x for x in range(len( client.buffer.split(self.sepChar) )-1)  ]:
+                self.downloading = False
                 message = client.buffer.split(self.sepChar)[i]
                 if client.verifiedUser and client.encData:
                     message = client.currentUser.decryptData(message)
@@ -569,6 +572,7 @@ class Client():
         self.loop = None
         self.buffer = b''
         self.downloading = False
+        self.chunkSize = 1024
 
         self.verifiedUser = False
         self.encData = True
@@ -624,10 +628,10 @@ class Client():
     def downloadStarted(self):
         pass
 
-    async def getData(self, reader, writer, length=600):
+    async def getData(self, reader, writer):
         data = None
         try:
-            data = await reader.read(length)
+            data = await reader.read(self.chunkSize)
         except Exception as e:
             print("ERROR: {}".format(e))
         return data
@@ -675,6 +679,7 @@ class Client():
             self.buffer += data
 
             for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
+                self.downloading = False
                 message = self.buffer.split(self.sepChar)[i]
                 if self.login[1] and self.verifiedUser:
                     message = self.decryptData(message)
@@ -785,7 +790,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed:
+        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed and self.connected:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
