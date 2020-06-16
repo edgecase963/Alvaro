@@ -49,14 +49,13 @@ def newStreamID(streams):
     return "p{}".format(pN).encode()
 
 def convVarType(var, t):
-    t = t.lower(); var = var.lower()
-    if t == "s": return str(var)
-    if t == "i": return int(var)
-    if t == "f": return float(var)
-    if t == "b":
-        if var == "true":
+    if t.lower() == "s": return str(var)
+    if t.lower() == "i": return int(var)
+    if t.lower() == "f": return float(var)
+    if t.lower() == "b":
+        if var.lower() == "true":
             return True
-        elif var == "false":
+        elif var.lower() == "false":
             return False
         else:
             return bool(var)
