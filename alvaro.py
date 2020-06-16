@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.6 (Beta)"
+__version__ = "0.6.7 (Beta)"
 
 
 
@@ -304,6 +304,7 @@ class Host():
         self.loginDelay = 0.6
         self.multithreading = multithreading
         self.loop = None
+        self.chunkSize = 1024
 
         self.downloading = False
 
@@ -407,10 +408,10 @@ class Host():
             if client.addr == addr:
                 client.disconnect()
 
-    async def getData(self, client, reader, writer, length=600):
+    async def getData(self, client, reader, writer):
         data = None
         try:
-            data = await reader.read(length)
+            data = await reader.read(self.chunkSize)
         except Exception as e:
             await self.log( str(e) + " - {}:{}".format(client.addr, client.port) )
         return data
@@ -484,6 +485,7 @@ class Host():
             client.buffer += data
 
             for i in [  x for x in range(len( client.buffer.split(self.sepChar) )-1)  ]:
+                self.downloading = False
                 message = client.buffer.split(self.sepChar)[i]
                 if client.verifiedUser and client.encData:
                     message = client.currentUser.decryptData(message)
@@ -570,6 +572,7 @@ class Client():
         self.loop = None
         self.buffer = b''
         self.downloading = False
+        self.chunkSize = 1024
 
         self.verifiedUser = False
         self.encData = True
@@ -625,10 +628,10 @@ class Client():
     def downloadStarted(self):
         pass
 
-    async def getData(self, reader, writer, length=600):
+    async def getData(self, reader, writer):
         data = None
         try:
-            data = await reader.read(length)
+            data = await reader.read(self.chunkSize)
         except Exception as e:
             print("ERROR: {}".format(e))
         return data
@@ -676,6 +679,7 @@ class Client():
             self.buffer += data
 
             for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
+                self.downloading = False
                 message = self.buffer.split(self.sepChar)[i]
                 if self.login[1] and self.verifiedUser:
                     message = self.decryptData(message)
