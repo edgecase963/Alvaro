@@ -1,4 +1,4 @@
-﻿# Alvaro
+# Alvaro
 ---
 
 Alvaro is an easy to use networking module built to save you time on your projects without compromising on reliability, security or functionality.
@@ -72,6 +72,7 @@ Interchangeable functions for a server:
 * `gotData(client, data, metaData)`
 * `loggedIn(client, user)`
 * `downloadStarted(client)`
+* `downloadStopped(client)`
 
 Interchangeable functions for a client:
 * `madeConnection()`
@@ -79,6 +80,7 @@ Interchangeable functions for a client:
 * `loggedIn()`
 * `gotData(client, data, metaData)`
 * `downloadStarted()`
+* `downloadStopped()`
 
 
 
