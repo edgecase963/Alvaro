@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.8 (Beta)"
+__version__ = "0.7.0 (Beta)"
 
 
 
@@ -18,7 +18,7 @@ def encrypt(plainText, password):
         iterations=100000,
         backend=default_backend()
     )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
+    key = base64.urlsafe_b64encode( kdf.derive(password) )
     f = Fernet(key)
     cText = f.encrypt(plainText)
     return cText, salt
@@ -31,20 +31,26 @@ def decrypt(cText, salt, password):
         iterations=100000,
         backend=default_backend()
     )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
+    key = base64.urlsafe_b64encode( kdf.derive(password) )
     f = Fernet(key)
     try:
         plainText = f.decrypt(cText)
         return plainText
     except cryptography.fernet.InvalidToken:
         return False
+    except Exception as e:
+        print( "ERROR: {}".format(e) )
+        return False
 
 
 def convVarType(var, t):
-    if t.lower() == "s": return str(var)
-    if t.lower() == "i": return int(var)
-    if t.lower() == "f": return float(var)
-    if t.lower() == "b":
+    if t.lower() == "s":
+        return str(var)
+    elif t.lower() == "i":
+        return int(var)
+    elif t.lower() == "f":
+        return float(var)
+    elif t.lower() == "b":
         if var.lower() == "true":
             return True
         elif var.lower() == "false":
@@ -128,7 +134,7 @@ class User():
 
     def encryptData(self, data):
         if self.hasPassword and self.password:
-            cData, salt = encrypt(data, self.password.encode())
+            cData, salt = encrypt( data, self.password.encode() )
             data = salt+cData
             return data
         else:
@@ -138,7 +144,7 @@ class User():
         if self.hasPassword and self.password:
             salt = data[:16]
             cData = data[16:]
-            data = decrypt(cData, salt, self.password.encode())
+            data = decrypt( cData, salt, self.password.encode() )
             return data
         else:
             return data
@@ -167,7 +173,7 @@ class User():
             password = password.encode()
         if self.hasPassword:
             if self.cPass and password:
-                if password == decrypt(self.cPass[0], self.cPass[1], password):
+                if password == decrypt( self.cPass[0], self.cPass[1], password ):
                     return True
             else:
                 return False
@@ -179,12 +185,12 @@ class User():
             if not connection in self.connections:
                 self.connections.append(connection)
             self.password = password
-            self.loginHistory.append( [ time.time(), connection.addr ] )
+            self.loginHistory.append( [time.time(), connection.addr] )
             connection.verifiedUser = True
             connection.currentUser = self
             return True
         else:
-            self.loginAttempts.append( [ time.time(), connection.addr ] )
+            self.loginAttempts.append( [time.time(), connection.addr] )
             return False
 
     def logout(self, client):
@@ -296,6 +302,7 @@ class Host():
         self.multithreading = multithreading
         self.loop = None
         self.chunkSize = 1000
+        self.defaultBlacklistTime = 600
 
         self.downloading = False
 
@@ -351,8 +358,10 @@ class Host():
     def addUser(self, username, password=None):
         user = User(username)
         if password:
-            if type(password) == bytes: password = password.decode()
-            if type(password) != str: password = str(password)
+            if type(password) == bytes:
+                password = password.decode()
+            if type(password) != str:
+                password = str(password)
             user.addPassword(password)
         if not username in self.users:
             self.users[username] = user
@@ -395,12 +404,18 @@ class Host():
     def downloadStopped(self, client):
         pass
 
-    async def blacklistIP(self, addr, bTime=600):
+    async def blacklistIP(self, addr, bTime=None):
+        if not bTime:
+            bTime = self.defaultBlacklistTime
         self.blacklist[addr] = time.time()+bTime
-        await self.log("Blacklisted {} for {} seconds".format(addr, bTime))
+        await self.log( "Blacklisted {} for {} seconds".format(addr, bTime) )
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect()
+        if self.multithreading:
+            Thread(target=self.blacklisted, args=[addr]).start()
+        else:
+            self.blacklisted(addr)
 
     async def getData(self, client, reader, writer):
         data = None
@@ -424,9 +439,12 @@ class Host():
                     if user.login(username, password, client):
                         await self.log("{} logged in".format(username))
                         client.sendRaw(b'login accepted', enc=False)
-                        self.loggedIn(client, user)
+                        if self.multithreading:
+                            Thread(target=self.loggedIn, args=[client]).start()
+                        else:
+                            self.loggedIn(client, user)
                     else:
-                        await self.log("Failed login attempt - {} - {}:{}".format(username, client.addr, client.port))
+                        await self.log( "Failed login attempt - {} - {}:{}".format(username, client.addr, client.port) )
                         self.loginAttempts.append( [time.time(), client.addr] )
 
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
@@ -437,7 +455,7 @@ class Host():
                     await self.log("Login Failed - Username '{}' not recognized".format(username))
                     client.sendRaw(b'login failed')
         if data.startswith("encData:"):
-            await self.log("{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]))
+            await self.log( "{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]) )
             if data.split(":")[1] == "True":
                 client.encData = True
             elif data.split(":")[1] == "False":
@@ -445,7 +463,7 @@ class Host():
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
-                await self.log("User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port))
+                await self.log( "User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port) )
 
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
@@ -465,7 +483,10 @@ class Host():
         if self.loginRequired and not client.verifiedUser:
             client.sendRaw(b'login required')
 
-        self.newClient(client)
+        if self.multithreading:
+            Thread(target=self.newClient, args=[client]).start()
+        else:
+            self.newClient(client)
 
         client.buffer = b''
 
@@ -512,7 +533,10 @@ class Host():
         self.clients.remove(client)
         writer.close()
         client.logout()
-        self.lostClient(client)
+        if self.multithreading:
+            Thread(target=self.lostClient, args=[client]).start()
+        else:
+            self.lostClient(client)
 
     async def start(self, useSSL=False, sslCert=None, sslKey=None):
         self.running = True
@@ -559,7 +583,7 @@ class Host():
 class Client():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
-    def __init__(self, multithreading=False):
+    def __init__(self, multithreading=False, verbose=False):
         self.connected = False
         self.reader = None
         self.writer = None
@@ -574,6 +598,7 @@ class Client():
         self.buffer = b''
         self.downloading = False
         self.chunkSize = 1000
+        self.verbose = verbose
 
         self.verifiedUser = False
         self.encData = True
@@ -599,7 +624,7 @@ class Client():
 
     def encryptData(self, data):
         if self.login[1]:
-            cData, salt = encrypt(data, self.login[1].encode())
+            cData, salt = encrypt( data, self.login[1].encode() )
             data = salt+cData
             return data
         else:
@@ -609,7 +634,7 @@ class Client():
         if self.login[1]:
             salt = data[:16]
             cData = data[16:]
-            data = decrypt(cData, salt, self.login[1].encode())
+            data = decrypt( cData, salt, self.login[1].encode() )
             return data
         else:
             return data
@@ -637,7 +662,8 @@ class Client():
         try:
             data = await reader.read(self.chunkSize)
         except Exception as e:
-            print("ERROR: {}".format(e))
+            if self.verbose:
+                print("ERROR: {}".format(e))
         return data
 
     async def gotRawData(self, data):
@@ -656,7 +682,10 @@ class Client():
                 self.sendRaw(b'LOGIN:'+username+b'|'+password)
         if data == b'login accepted':
             self.verifiedUser = True
-            self.loggedIn()
+            if self.multithreading:
+                Thread(target=self.loggedIn).start()
+            else:
+                self.loggedIn()
             if not self.encData:
                 self.encData = True
                 await self.send_raw("encData:False")
@@ -742,7 +771,8 @@ class Client():
 
             result = self.loop.call_soon_threadsafe(await self.handleHost())
         except Exception as e:
-            print("ERROR: {}".format(e))
+            if self.verbose:
+                print("ERROR: {}".format(e))
             self.connected = False
             self.conUpdated = time.time()
         self.connected = False
@@ -750,7 +780,8 @@ class Client():
 
     async def send_data(self, data, metaData=None):
         if not self.connected:
-            print("ERROR: Event loop not connected. Unable to send data")
+            if self.verbose:
+                print("ERROR: Event loop not connected. Unable to send data")
             return None
         if type(data) != str and type(data) != bytes:
             data = str(data)
@@ -768,7 +799,8 @@ class Client():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
             except Exception as e:
-                print("ERROR: {}".format(e))
+                if self.verbose:
+                    print("ERROR: {}".format(e))
 
     async def send_raw(self, data):
         if not self.connected:
@@ -820,13 +852,16 @@ def receivedText(client, data, metaData):
     print("Data Length: {}".format( len(data) ))
     print("Meta:        {}".format(metaData))
 
+def downloading(client):
+    print("Download started...")
 
 def connection(client):
     client.sendData("Thank you for connecting")
 
 if __name__ == "__main__":
-    x = Host("localhost", 8888, verbose=True, logging=True, loginRequired=True)
+    x = Host("localhost", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
     x.addUser("admin", password="test123")
     x.gotData = receivedText
     x.newClient = connection
+    x.downloadStarted = downloading
     asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )

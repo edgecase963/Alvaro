@@ -1,4 +1,4 @@
-# Alvaro
+﻿# Alvaro
 ---
 
 Alvaro is an easy to use networking module built to save you time on your projects without compromising on reliability, security or functionality.
@@ -207,3 +207,4 @@ serv = alvaro.Host("localhost", 8888)
 serv.newLoop(testFunc, finishFunc=finished)
 ```
 Of course it is not ideal to blacklist an IP immediately once it connects for no reason, but this function has its uses.
+The default blacklist time is 600 seconds. This is changable and held in the 'defaultBlacklistTime' variable for the host class.
