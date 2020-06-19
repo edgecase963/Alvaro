@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.6.9 (Beta)"
+__version__ = "0.7.0 (Beta)"
 
 
 
@@ -37,7 +37,6 @@ def decrypt(cText, salt, password):
         plainText = f.decrypt(cText)
         return plainText
     except cryptography.fernet.InvalidToken:
-        print(" ERROR: Invalid Token" )
         return False
     except Exception as e:
         print( "ERROR: {}".format(e) )
@@ -303,6 +302,7 @@ class Host():
         self.multithreading = multithreading
         self.loop = None
         self.chunkSize = 1000
+        self.defaultBlacklistTime = 600
 
         self.downloading = False
 
@@ -404,12 +404,18 @@ class Host():
     def downloadStopped(self, client):
         pass
 
-    async def blacklistIP(self, addr, bTime=600):
+    async def blacklistIP(self, addr, bTime=None):
+        if not bTime:
+            bTime = self.defaultBlacklistTime
         self.blacklist[addr] = time.time()+bTime
         await self.log( "Blacklisted {} for {} seconds".format(addr, bTime) )
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect()
+        if self.multithreading:
+            Thread(target=self.blacklisted, args=[addr]).start()
+        else:
+            self.blacklisted(addr)
 
     async def getData(self, client, reader, writer):
         data = None
@@ -433,7 +439,10 @@ class Host():
                     if user.login(username, password, client):
                         await self.log("{} logged in".format(username))
                         client.sendRaw(b'login accepted', enc=False)
-                        self.loggedIn(client, user)
+                        if self.multithreading:
+                            Thread(target=self.loggedIn, args=[client]).start()
+                        else:
+                            self.loggedIn(client, user)
                     else:
                         await self.log( "Failed login attempt - {} - {}:{}".format(username, client.addr, client.port) )
                         self.loginAttempts.append( [time.time(), client.addr] )
@@ -474,7 +483,10 @@ class Host():
         if self.loginRequired and not client.verifiedUser:
             client.sendRaw(b'login required')
 
-        self.newClient(client)
+        if self.multithreading:
+            Thread(target=self.newClient, args=[client]).start()
+        else:
+            self.newClient(client)
 
         client.buffer = b''
 
@@ -521,7 +533,10 @@ class Host():
         self.clients.remove(client)
         writer.close()
         client.logout()
-        self.lostClient(client)
+        if self.multithreading:
+            Thread(target=self.lostClient, args=[client]).start()
+        else:
+            self.lostClient(client)
 
     async def start(self, useSSL=False, sslCert=None, sslKey=None):
         self.running = True
@@ -667,7 +682,10 @@ class Client():
                 self.sendRaw(b'LOGIN:'+username+b'|'+password)
         if data == b'login accepted':
             self.verifiedUser = True
-            self.loggedIn()
+            if self.multithreading:
+                Thread(target=self.loggedIn).start()
+            else:
+                self.loggedIn()
             if not self.encData:
                 self.encData = True
                 await self.send_raw("encData:False")
@@ -834,13 +852,16 @@ def receivedText(client, data, metaData):
     print("Data Length: {}".format( len(data) ))
     print("Meta:        {}".format(metaData))
 
+def downloading(client):
+    print("Download started...")
 
 def connection(client):
     client.sendData("Thank you for connecting")
 
 if __name__ == "__main__":
-    x = Host("localhost", 8888, verbose=True, logging=True, loginRequired=True)
+    x = Host("localhost", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
     x.addUser("admin", password="test123")
     x.gotData = receivedText
     x.newClient = connection
+    x.downloadStarted = downloading
     asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )

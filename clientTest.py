@@ -27,7 +27,12 @@ if __name__ == "__main__":
     cli.madeConnection = connected
     cli.downloadStarted = downloading
 
-    target = lambda: asyncio.run( cli.connect("localhost", 8888, useSSL=False, sslCert=None, login=("admin", "test123")) )
+    target = lambda: asyncio.run(
+        cli.connect("localhost", 8888,
+                    useSSL=False,
+                    sslCert=None,
+                    login=("admin", "test123"))
+    )
 
     cliThread = threading.Thread(target=target)
     cliThread.start()
