@@ -864,4 +864,8 @@ if __name__ == "__main__":
     x.gotData = receivedText
     x.newClient = connection
     x.downloadStarted = downloading
-    asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
+    try:
+        asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
+    except KeyboardInterrupt:
+        print("Ending script...")
+        sys.exit()
