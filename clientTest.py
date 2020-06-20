@@ -8,7 +8,7 @@ def lostConnection():
     print("Connection Lost!")
 
 def gotMessage(client, data, metaData):
-    print("Got Message: {}".format(data))
+    print("\nGot Message: {}".format(data))
     print("Meta-Data:   {}\n".format(metaData))
 
 def connected():

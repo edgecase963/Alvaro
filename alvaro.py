@@ -128,9 +128,11 @@ class User():
 
         self.loginHistory = []
         # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                         Login 1                        Login 2
 
         self.loginAttempts = []
         # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                        Attempt 1                      Attempt 2
 
     def encryptData(self, data):
         if self.hasPassword and self.password:
@@ -308,6 +310,7 @@ class Host():
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                                     Attempt 1                      Attempt 2
 
         self.blacklistThreshold = 1800   # (In seconds)
         # If too many login attempts are made within this threshold, the address will be blacklisted
@@ -851,6 +854,8 @@ def receivedText(client, data, metaData):
         client.disconnect()
     print("Data Length: {}".format( len(data) ))
     print("Meta:        {}".format(metaData))
+    print("Echoing...\n")
+    client.sendData(data)
 
 def downloading(client):
     print("Download started...")
