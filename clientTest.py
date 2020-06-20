@@ -46,7 +46,11 @@ if __name__ == "__main__":
         print("Logged in!")
 
         while cli.connected:
-            inp = input("Inp: ")
-            cli.sendData(inp, metaData={"From Client?": "Yes"})
+            try:
+                inp = input("Inp: ")
+                cli.sendData(inp, metaData={"From Client?": "Yes"})
+            except KeyboardInterrupt:
+                cli.disconnect()
+                break
     else:
         print("Failure to connect")
