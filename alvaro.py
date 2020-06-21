@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-import sys, os, time, random, asyncio, ssl, concurrent, pickle, base64, cryptography
+import sys, os, time, asyncio, ssl, pickle, base64, cryptography
 from threading import Thread
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.7.1 (Beta)"
+__version__ = "0.7.2 (Beta)"
 
 
 
@@ -443,7 +443,7 @@ class Host():
                         await self.log("{} logged in".format(username))
                         client.sendRaw(b'login accepted', enc=False)
                         if self.multithreading:
-                            Thread(target=self.loggedIn, args=[client]).start()
+                            Thread(target=self.loggedIn, args=[client, user]).start()
                         else:
                             self.loggedIn(client, user)
                     else:
