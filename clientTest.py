@@ -8,7 +8,7 @@ def lostConnection():
     print("Connection Lost!")
 
 def gotMessage(client, data, metaData):
-    print("Got Message: {}".format(data))
+    print("\nGot Message: {}".format(data))
     print("Meta-Data:   {}\n".format(metaData))
 
 def connected():
@@ -46,7 +46,11 @@ if __name__ == "__main__":
         print("Logged in!")
 
         while cli.connected:
-            inp = input("Inp: ")
-            cli.sendData(inp, metaData={"From Client?": "Yes"})
+            try:
+                inp = input("Inp: ")
+                cli.sendData(inp, metaData={"From Client?": "Yes"})
+            except KeyboardInterrupt:
+                cli.disconnect()
+                break
     else:
         print("Failure to connect")

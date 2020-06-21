@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.7.0 (Beta)"
+__version__ = "0.7.1 (Beta)"
 
 
 
@@ -128,9 +128,11 @@ class User():
 
         self.loginHistory = []
         # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                         Login 1                        Login 2
 
         self.loginAttempts = []
         # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                        Attempt 1                      Attempt 2
 
     def encryptData(self, data):
         if self.hasPassword and self.password:
@@ -227,7 +229,7 @@ class Connection():
         self.verifiedUser = False
         self.currentUser = None
 
-        self.encData = True
+        self.encData = False
 
     async def send_data(self, data, metaData=None, enc=True):
         if type(data) != str and type(data) != bytes:
@@ -236,7 +238,7 @@ class Connection():
             data = data.encode()
         data = prepData(data, metaData=metaData)
 
-        if self.verifiedUser and enc:
+        if self.verifiedUser and enc and self.encData:
             data = self.currentUser.encryptData(data)
 
         data = data + self.sepChar
@@ -257,7 +259,7 @@ class Connection():
             if type(data) == str:
                 data = data.encode()
 
-            if self.verifiedUser and enc:
+            if self.verifiedUser and enc and self.encData:
                 data = self.currentUser.encryptData(data)
 
             data = data + self.sepChar
@@ -308,6 +310,7 @@ class Host():
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
+        #                                     Attempt 1                      Attempt 2
 
         self.blacklistThreshold = 1800   # (In seconds)
         # If too many login attempts are made within this threshold, the address will be blacklisted
@@ -601,7 +604,7 @@ class Client():
         self.verbose = verbose
 
         self.verifiedUser = False
-        self.encData = True
+        self.encData = False
 
     def setUserEncrypt(self, newValue):
         async def SET_USER_ENCD(self, newValue):
@@ -686,10 +689,6 @@ class Client():
                 Thread(target=self.loggedIn).start()
             else:
                 self.loggedIn()
-            if not self.encData:
-                self.encData = True
-                await self.send_raw("encData:False")
-                self.encData = False
         if data == b'login failed':
             self.loginFailed = True
         if data == b'disconnect':
@@ -714,7 +713,7 @@ class Client():
             for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
                 self.downloading = False
                 message = self.buffer.split(self.sepChar)[i]
-                if self.login[1] and self.verifiedUser:
+                if self.login[1] and self.verifiedUser and self.encData:
                     message = self.decryptData(message)
                 if message:
                     message, metaData, isRaw = dissectData(message)
@@ -851,6 +850,8 @@ def receivedText(client, data, metaData):
         client.disconnect()
     print("Data Length: {}".format( len(data) ))
     print("Meta:        {}".format(metaData))
+    print("Echoing...\n")
+    client.sendData(data)
 
 def downloading(client):
     print("Download started...")
@@ -864,4 +865,8 @@ if __name__ == "__main__":
     x.gotData = receivedText
     x.newClient = connection
     x.downloadStarted = downloading
-    asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
+    try:
+        asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
+    except KeyboardInterrupt:
+        print("Ending script...")
+        sys.exit()
