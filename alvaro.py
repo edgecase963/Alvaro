@@ -5,7 +5,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-__version__ = "0.7.2 (Beta)"
+__version__ = "0.8.0 (Beta)"
 
 
 
@@ -848,23 +848,19 @@ class Client():
 def receivedText(client, data, metaData):
     if data == b'exit':
         client.disconnect()
-    print("Data Length: {}".format( len(data) ))
-    print("Meta:        {}".format(metaData))
-    print("Echoing...\n")
+    print("Data: {}".format( data ))
     client.sendData(data)
 
 def downloading(client):
     print("Download started...")
 
-def connection(client):
-    client.sendData("Thank you for connecting")
 
 if __name__ == "__main__":
     x = Host("localhost", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
-    x.addUser("admin", password="test123")
+    x.addUser("admin", "test123")
     x.gotData = receivedText
-    x.newClient = connection
     x.downloadStarted = downloading
+
     try:
         asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
     except KeyboardInterrupt:

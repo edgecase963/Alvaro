@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import time, asyncio, threading
+import time, sys, asyncio, threading
 import alvaro
 
 
@@ -8,17 +8,16 @@ def lostConnection():
     print("Connection Lost!")
 
 def gotMessage(client, data, metaData):
-    print("\nGot Message: {}".format(data))
-    if metaData:
-        print("Meta-Data:   {}\n".format(metaData))
-    else:
-        print("No Meta-Data")
+    diff = time.time()-float(data)
+    speed = int(1./diff)
+    cli.lst.append(speed)
+    avg = int(sum(client.lst) / len(client.lst))
+    sys.stdout.write("\rAverage Speed: {} messages/s      ".format(avg))
+    sys.stdout.flush()
+    client.sendData( str(time.time()) )
 
 def connected():
     print("Connected!")
-
-def downloading():
-    print("Download started...")
 
 
 
@@ -28,7 +27,6 @@ if __name__ == "__main__":
     cli.lostConnection = lostConnection
     cli.gotData = gotMessage
     cli.madeConnection = connected
-    cli.downloadStarted = downloading
 
     target = lambda: asyncio.run(
         cli.connect("localhost", 8888,
@@ -48,13 +46,7 @@ if __name__ == "__main__":
 
     if c and li:
         print("Logged in!")
-
-        while cli.connected:
-            try:
-                inp = input("Inp: ")
-                cli.sendData(inp, metaData={"From Client?": "Yes"})
-            except KeyboardInterrupt:
-                cli.disconnect()
-                break
+        cli.lst = []
+        cli.sendData( str(time.time()) )
     else:
         print("Failure to connect")
