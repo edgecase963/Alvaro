@@ -18,6 +18,6 @@ curl -O https://raw.githubusercontent.com/edgecase963/Alvaro/master/alvaro.py
 wget https://raw.githubusercontent.com/edgecase963/Alvaro/master/setup.py -O setup.py
 
 # install Alvaro
-sudo python3 setup.py install
+sudo python3.8 setup.py install
 
 ```
