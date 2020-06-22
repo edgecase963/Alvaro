@@ -6,6 +6,8 @@ __pycache__/
 # Alvaro testing
 users/
 log.txt
+test.crt
+test.key
 
 # C extensions
 *.so
