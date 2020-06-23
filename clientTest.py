@@ -9,10 +9,6 @@ def lostConnection():
 
 def gotMessage(client, data, metaData):
     print("\nGot Message: {}".format(data))
-    if metaData:
-        print("Meta-Data:   {}\n".format(metaData))
-    else:
-        print("No Meta-Data")
 
 def connected():
     print("Connected!")
@@ -48,13 +44,17 @@ if __name__ == "__main__":
 
     if c and li:
         print("Logged in!")
+        print("Type what you want and press Enter to send")
 
         while cli.connected:
             try:
-                inp = input("Inp: ")
-                cli.sendData(inp, metaData={"From Client?": "Yes"})
+                inp = input("")
+                cli.sendData(inp)
             except KeyboardInterrupt:
                 cli.disconnect()
                 break
     else:
-        print("Failure to connect")
+        if not c:
+            print("Failure to connect")
+        if not li:
+            print("Failure to log in")
