@@ -11,9 +11,6 @@ Alvaro requires Asyncio. Fortunately, this is easy to implement into your code
 # download alvaro.py
 wget https://raw.githubusercontent.com/edgecase963/Alvaro/master/alvaro.py -O alvaro.py
 
-# download with curl
-curl -O https://raw.githubusercontent.com/edgecase963/Alvaro/master/alvaro.py
-
 # download the setup script
 wget https://raw.githubusercontent.com/edgecase963/Alvaro/master/setup.py -O setup.py
 
