@@ -57,4 +57,7 @@ if __name__ == "__main__":
         cli.lst = []
         cli.sendData( str(time.time()) )
     else:
-        print("Failure to connect")
+        if not c:
+            print("Failure to connect")
+        if not li:
+            print("Failure to log in")

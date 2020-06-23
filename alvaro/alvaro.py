@@ -275,7 +275,10 @@ class Connection():
             except Exception as e:
                 print("ERROR: {}".format(e))
 
-    def disconnect(self):
+    def disconnect(self, reason=None):
+        if self.server:
+            if self.server.loop:
+                asyncio.run_coroutine_threadsafe( self.server.log("Disconnecting {} - {}...".format(self.addr, reason)), self.server.loop )
         self.sendRaw("disconnect")
         self.writer.close()
         self.logout()
@@ -414,7 +417,7 @@ class Host():
         await self.log( "Blacklisted {} for {} seconds".format(addr, bTime) )
         for client in self.clients:
             if client.addr == addr:
-                client.disconnect()
+                client.disconnect("Blacklisted")
         if self.multithreading:
             Thread(target=self.blacklisted, args=[addr]).start()
         else:
@@ -453,7 +456,7 @@ class Host():
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
                             await self.blacklistIP(client.addr)
 
-                        client.disconnect()
+                        client.disconnect("Failed login")
                 else:
                     await self.log("Login Failed - Username '{}' not recognized".format(username))
                     client.sendRaw(b'login failed')
@@ -480,7 +483,7 @@ class Host():
                 self.blacklist.pop(client.addr)
             else:
                 await self.log("{} is blacklisted - disconnecting...".format(client.addr))
-                client.disconnect()
+                client.disconnect("Blacklisted")
                 return
 
         if self.loginRequired and not client.verifiedUser:
@@ -496,7 +499,7 @@ class Host():
         while self.running:
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout:
-                    client.disconnect()
+                    client.disconnect("Login timeout")
             data = await self.getData(client, reader, writer)
             if not data:
                 break
@@ -845,9 +848,9 @@ class Client():
 
 
 
-def receivedText(client, data, metaData):
+def echoData(client, data, metaData):
     if data == b'exit':
-        client.disconnect()
+        client.disconnect("Exit detected")
     print("Data: {}".format( data ))
     client.sendData(data)
 
@@ -856,13 +859,13 @@ def downloading(client):
 
 
 if __name__ == "__main__":
-    x = Host("localhost", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
+    x = Host("tardis.local", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
     x.addUser("admin", "test123")
-    x.gotData = receivedText
+    x.gotData = echoData
     x.downloadStarted = downloading
 
     try:
-        asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
+        asyncio.run( x.start(useSSL=True, sslCert="test.crt", sslKey="test.key") )
     except KeyboardInterrupt:
         print("Ending script...")
         sys.exit()
