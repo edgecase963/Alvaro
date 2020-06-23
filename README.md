@@ -8,11 +8,10 @@ Alvaro requires Asyncio. Fortunately, this is easy to implement into your code
 
 ```bash
 
-# download alvaro.py
-wget https://raw.githubusercontent.com/edgecase963/Alvaro/master/alvaro.py -O alvaro.py
+# clone alvaro
+git clone https://github.com/edgecase963/alvaro
 
-# download the setup script
-wget https://raw.githubusercontent.com/edgecase963/Alvaro/master/setup.py -O setup.py
+cd alvaro
 
 # install Alvaro
 sudo python3.8 setup.py install
