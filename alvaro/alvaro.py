@@ -859,13 +859,13 @@ def downloading(client):
 
 
 if __name__ == "__main__":
-    x = Host("tardis.local", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
+    x = Host("localhost", 8888, verbose=True, logging=False, loginRequired=True, multithreading=False)
     x.addUser("admin", "test123")
     x.gotData = echoData
     x.downloadStarted = downloading
 
     try:
-        asyncio.run( x.start(useSSL=True, sslCert="test.crt", sslKey="test.key") )
+        asyncio.run( x.start(useSSL=False, sslCert=None, sslKey=None) )
     except KeyboardInterrupt:
         print("Ending script...")
         sys.exit()
