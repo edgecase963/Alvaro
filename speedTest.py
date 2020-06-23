@@ -10,11 +10,19 @@ def lostConnection():
 def gotMessage(client, data, metaData):
     diff = time.time()-float(data)
     speed = int(1./diff)
-    cli.lst.append(speed)
-    avg = int(sum(client.lst) / len(client.lst))
-    sys.stdout.write("\rAverage Speed: {} messages/s      ".format(avg))
-    sys.stdout.flush()
-    client.sendData( str(time.time()) )
+    client.lst.append(speed)
+    viewThresh = 100
+    if client.encData:
+        viewThresh = 10
+    try:
+        shortened_list = client.lst[len(client.lst)-viewThresh:]
+        client.lst = shortened_list
+        avg = int(sum(shortened_list) / len(shortened_list))
+        sys.stdout.write("\rAverage Speed: {} messages/s      ".format(avg))
+        sys.stdout.flush()
+        client.sendData( str(time.time()) )
+    except:
+        pass
 
 def connected():
     print("Connected!")
