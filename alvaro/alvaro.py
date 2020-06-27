@@ -44,19 +44,16 @@ def decrypt(cText, salt, password):
 
 
 def convVarType(var, t):
-    if t.lower() == "s":
-        return str(var)
-    elif t.lower() == "i":
-        return int(var)
-    elif t.lower() == "f":
-        return float(var)
-    elif t.lower() == "b":
+    varDict = {"s": str, "i": int, "f": float}
+    if t.lower() == "b":
         if var.lower() == "true":
             return True
         elif var.lower() == "false":
             return False
         else:
             return bool(var)
+    elif t in varDict:
+        return varDict[t](var)
     return var
 
 def unpackMetaStr(metaStr):
