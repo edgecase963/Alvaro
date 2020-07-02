@@ -30,7 +30,7 @@ def connected():
 
 
 if __name__ == "__main__":
-    cli = alvaro.Client(verbose=True)
+    cli = alvaro.Client()
 
     cli.lostConnection = lostConnection
     cli.gotData = gotMessage

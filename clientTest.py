@@ -8,7 +8,8 @@ def lostConnection():
     print("Connection Lost!")
 
 def gotMessage(client, data, metaData):
-    print("\nGot Message: {}".format(data))
+    data = data.decode()
+    print("\nGot Message: {}\n".format(data))
 
 def connected():
     print("Connected!")
@@ -19,7 +20,7 @@ def downloading():
 
 
 if __name__ == "__main__":
-    cli = alvaro.Client(verbose=True)
+    cli = alvaro.Client()
 
     cli.lostConnection = lostConnection
     cli.gotData = gotMessage

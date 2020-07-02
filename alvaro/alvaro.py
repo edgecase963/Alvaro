@@ -585,7 +585,7 @@ class Host():
 class Client():
     sepChar = b'\n\t_SEPARATOR_\t\n'
 
-    def __init__(self, multithreading=False, verbose=False):
+    def __init__(self, multithreading=False):
         self.connected = False
         self.reader = None
         self.writer = None
@@ -600,7 +600,6 @@ class Client():
         self.buffer = b''
         self.downloading = False
         self.chunkSize = 1000
-        self.verbose = verbose
 
         self.verifiedUser = False
         self.encData = False
@@ -664,8 +663,7 @@ class Client():
         try:
             data = await reader.read(self.chunkSize)
         except Exception as e:
-            if self.verbose:
-                print("ERROR: {}".format(e))
+            print("ERROR: {}".format(e))
         return data
 
     async def gotRawData(self, data):
@@ -769,8 +767,7 @@ class Client():
 
             result = self.loop.call_soon_threadsafe(await self.handleHost())
         except Exception as e:
-            if self.verbose:
-                print("ERROR: {}".format(e))
+            print("ERROR: {}".format(e))
             self.connected = False
             self.conUpdated = time.time()
         self.connected = False
@@ -778,8 +775,7 @@ class Client():
 
     async def send_data(self, data, metaData=None):
         if not self.connected:
-            if self.verbose:
-                print("ERROR: Event loop not connected. Unable to send data")
+            print("ERROR: Event loop not connected. Unable to send data")
             return None
         if type(data) != str and type(data) != bytes:
             data = str(data)
@@ -797,8 +793,7 @@ class Client():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
             except Exception as e:
-                if self.verbose:
-                    print("ERROR: {}".format(e))
+                print("ERROR: {}".format(e))
 
     async def send_raw(self, data):
         if not self.connected:
@@ -847,7 +842,7 @@ class Client():
 def echoData(client, data, metaData):
     if data == b'exit':
         client.disconnect("Exit detected")
-    print("Data: {}".format( data ))
+    print("Got Data: {}".format( data.decode() ))
     client.sendData(data)
 
 def downloading(client):
