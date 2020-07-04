@@ -246,7 +246,7 @@ class Connection():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData, enc=enc), self.server.loop )
             except Exception as e:
-                print("ERROR: {}".format(e))
+                print("Error sending data: {}".format(e))
 
     async def send_raw(self, data, enc=True):
         try:
@@ -269,14 +269,17 @@ class Connection():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_raw(data, enc=enc), self.server.loop )
             except Exception as e:
-                print("ERROR: {}".format(e))
+                print("Error sending data: {}".format(e))
 
     def disconnect(self, reason=None):
         if self.server:
             if self.server.loop:
                 asyncio.run_coroutine_threadsafe( self.server.log("Disconnecting {} - {}...".format(self.addr, reason)), self.server.loop )
         self.sendRaw("disconnect")
-        self.writer.close()
+        try:
+            self.writer.close()
+        except Exception as e:
+            print("Error closing stream: {}".format(e))
         self.logout()
 
     def blacklist(self, bTime=600):
@@ -286,6 +289,7 @@ class Connection():
     def logout(self):
         if self.currentUser:
             self.currentUser.logout(self)
+
 
 
 class Host():
@@ -304,8 +308,6 @@ class Host():
         self.loop = None
         self.chunkSize = 1000
         self.defaultBlacklistTime = 600
-
-        self.downloading = False
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -420,12 +422,16 @@ class Host():
             self.blacklisted(addr)
 
     async def getData(self, client, reader, writer):
-        data = None
+        data = b''
         try:
-            data = await reader.read(self.chunkSize)
+            data = await reader.readuntil(self.sepChar)
+        except asyncio.LimitOverrunError as e:
+            await self.log("ERROR: Buffer limit too small for incoming data ( asyncio.LimitOverrunError ) - {}:{}".format(client.addr, client.port))
+        except asyncio.exceptions.IncompleteReadError:
+            await self.log( "asyncio.exceptions.IncompleteReadError - {}:{}".format(client.addr, client.port) )
         except Exception as e:
-            await self.log( str(e) + " - {}:{}".format(client.addr, client.port) )
-        return data
+            await self.log( "{} - {}:{}".format(e, client.addr, client.port) )
+        return data.rstrip(self.sepChar)
 
     async def gotRawData(self, client, data):
         if type(data) == bytes:
@@ -490,57 +496,40 @@ class Host():
         else:
             self.newClient(client)
 
-        client.buffer = b''
-
         while self.running:
             if self.loginRequired and not client.verifiedUser:
-                if time.time() - client.connectionTime >= self.loginTimeout:
+                if time.time() - client.connectionTime >= self.loginTimeout and not client.verifiedUser:
                     client.disconnect("Login timeout")
             data = await self.getData(client, reader, writer)
             if not data:
                 break
-            client.buffer += data
 
-            for i in [  x for x in range(len( client.buffer.split(self.sepChar) )-1)  ]:
-                self.downloading = False
-                message = client.buffer.split(self.sepChar)[i]
-                if client.verifiedUser and client.encData:
-                    message = client.currentUser.decryptData(message)
-                if message:
-                    message, metaData, isRaw = dissectData(message)
+            if client.verifiedUser and client.encData:
+                data = client.currentUser.decryptData(data)
+            if data:
+                data, metaData, isRaw = dissectData(data)
 
-                    if isRaw:
-                        await self.gotRawData(client, message)
-                    elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
-                        if self.multithreading:
-                            Thread(target = self.gotData, args=[client, message, metaData]).start()
-                        else:
-                            self.gotData(client, message, metaData)
-            client.buffer = client.buffer.split(self.sepChar)[len(client.buffer.split(self.sepChar))-1]
-            if client.buffer:
-                if self.downloading == False:
-                    self.downloading = True
+                if isRaw:
+                    await self.gotRawData(client, data)
+                elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
                     if self.multithreading:
-                        Thread(target=self.downloadStarted, args=[client]).start()
+                        Thread(target = self.gotData, args=[client, data, metaData]).start()
                     else:
-                        self.downloadStarted(client)
-            else:
-                self.downloading = False
-                if self.multithreading:
-                    Thread(target=self.downloadStopped, args=[client]).start()
-                else:
-                    self.downloadStopped(client)
+                        self.gotData(client, data, metaData)
 
         await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
-        writer.close()
+        try:
+            writer.close()
+        except Exception as e:
+            print("Error closing stream: {}".format(e))
         client.logout()
         if self.multithreading:
             Thread(target=self.lostClient, args=[client]).start()
         else:
             self.lostClient(client)
 
-    async def start(self, useSSL=False, sslCert=None, sslKey=None):
+    async def start(self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536):
         self.running = True
         ssl_context = None
         self.loop = asyncio.get_running_loop()
@@ -565,12 +554,12 @@ class Host():
                 ssl_context.load_cert_chain(sslCert, sslKey)
                 await self.log("SSL certificate loaded")
 
-                server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context)
+                server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context, limit=buffer_limit)
             else:
                 await self.log("Unable to load certificate files")
                 return
         else:
-            server = await asyncio.start_server(self.handleClient, self.addr, self.port)
+            server = await asyncio.start_server(self.handleClient, self.addr, self.port, limit=buffer_limit)
 
         if server:
             await self.log("Server started")
@@ -591,14 +580,13 @@ class Client():
         self.writer = None
         self.hostAddr = None
         self.hostPort = None
-        self.conUpdated = time.time()   # Last time the connection status was changed
+        self.connection_updated = time.time()   # Last time the connection status was changed
         self.login = (None, None)
         self.multithreading = multithreading
         self.gotDisconnect = False
         self.loginFailed = False
         self.loop = None
         self.buffer = b''
-        self.downloading = False
         self.chunkSize = 1000
 
         self.verifiedUser = False
@@ -659,12 +647,16 @@ class Client():
         pass
 
     async def getData(self, reader, writer):
-        data = None
+        data = b''
         try:
-            data = await reader.read(self.chunkSize)
+            data = await reader.readuntil(self.sepChar)
+        except asyncio.LimitOverrunError:
+            print("ERROR: Buffer limit too small for incoming data ( asyncio.LimitOverrunError )")
+        except asyncio.exceptions.IncompleteReadError:
+            print( "asyncio.exceptions.IncompleteReadError" )
         except Exception as e:
-            print("ERROR: {}".format(e))
-        return data
+            print("Error retrieving data: {}".format(e))
+        return data.rstrip(self.sepChar)
 
     async def gotRawData(self, data):
         if data == b'login required':
@@ -705,36 +697,18 @@ class Client():
             if not data:
                 self.connected = False
                 break
-            self.buffer += data
 
-            for i in [  x for x in range(len( self.buffer.split(self.sepChar) )-1)  ]:
-                self.downloading = False
-                message = self.buffer.split(self.sepChar)[i]
-                if self.login[1] and self.verifiedUser and self.encData:
-                    message = self.decryptData(message)
-                if message:
-                    message, metaData, isRaw = dissectData(message)
-                    if isRaw:
-                        await self.gotRawData(message)
-                    else:
-                        if self.multithreading:
-                            Thread(target=self.gotData, args=[self, message, metaData]).start()
-                        else:
-                            self.gotData(self, message, metaData)
-            self.buffer = self.buffer.split(self.sepChar)[len(self.buffer.split(self.sepChar))-1]
-            if self.buffer:
-                if self.downloading == False:
-                    self.downloading = True
-                    if self.multithreading:
-                        Thread(target=self.downloadStarted).start()
-                    else:
-                        self.downloadStarted()
-            else:
-                self.downloading = False
-                if self.multithreading:
-                    Thread(target=self.downloadStopped).start()
+            if self.login[1] and self.verifiedUser and self.encData:
+                data = self.decryptData(data)
+            if data:
+                data, metaData, isRaw = dissectData(data)
+                if isRaw:
+                    await self.gotRawData(data)
                 else:
-                    self.downloadStopped()
+                    if self.multithreading:
+                        Thread(target=self.gotData, args=[self, data, metaData]).start()
+                    else:
+                        self.gotData(self, data, metaData)
         return self.lostConnection
 
     async def handleSelf(self):
@@ -743,7 +717,7 @@ class Client():
         if not self.connected and self.reader:
             self.reader.feed_data(self.sepChar)
 
-    async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None):
+    async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None, buffer_limit=65536):
         self.login = login
         self.gotDisconnect = False
         self.loginFailed = False
@@ -755,23 +729,23 @@ class Client():
                     ssl_context.load_verify_locations(sslCert)
 
             if ssl_context:
-                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort, ssl=ssl_context)
+                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort, ssl=ssl_context, limit=buffer_limit)
             else:
-                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort)
+                self.reader, self.writer = await asyncio.open_connection(hostAddr, hostPort, limit=buffer_limit)
 
             self.connected = True
-            self.conUpdated = time.time()
+            self.connection_updated = time.time()
             self.loop = asyncio.get_running_loop()
 
             future = asyncio.run_coroutine_threadsafe(self.handleSelf(), self.loop)
 
             result = self.loop.call_soon_threadsafe(await self.handleHost())
         except Exception as e:
-            print("ERROR: {}".format(e))
+            print("Error with connection: {}".format(e))
             self.connected = False
-            self.conUpdated = time.time()
+            self.connection_updated = time.time()
         self.connected = False
-        self.conUpdated = time.time()
+        self.connection_updated = time.time()
 
     async def send_data(self, data, metaData=None):
         if not self.connected:
@@ -793,7 +767,10 @@ class Client():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_data(data, metaData=metaData), self.loop )
             except Exception as e:
-                print("ERROR: {}".format(e))
+                print("Error sending data: {}".format(e))
+                self.disconnect()
+        else:
+            self.disconnect()
 
     async def send_raw(self, data):
         if not self.connected:
@@ -814,11 +791,14 @@ class Client():
             try:
                 asyncio.run_coroutine_threadsafe( self.send_raw(data), self.loop )
             except Exception as e:
-                print("ERROR: {}".format(e))
+                print("Error sending data: {}".format(e))
+                self.disconnect()
+        else:
+            self.disconnect()
 
     def waitForConnection(self, timeout=None):
         startTime = time.time()
-        while self.conUpdated < startTime:
+        while self.connection_updated < startTime:
             if timeout:
                 if time.time() >= startTime+float(timeout):
                     break
@@ -827,15 +807,23 @@ class Client():
     def waitForLogin(self, timeout=None):
         startTime = time.time()
         while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed and self.connected:
-            if timeout:
-                if time.time() >= startTime+float(timeout):
-                    break
+            try:
+                if timeout:
+                    if time.time() >= startTime+float(timeout):
+                        break
+            except Exception as e:
+                print("Error waiting for login: {}".format(e))
+                self.disconnect()
         return self.verifiedUser
 
     def disconnect(self):
-        if self.connected and self.writer:
-            self.writer.close()
+        if self.connected:
             self.connected = False
+        if self.writer:
+            try:
+                self.writer.close()
+            except Exception as e:
+                print("Error closing stream: {}".format(e))
 
 
 
