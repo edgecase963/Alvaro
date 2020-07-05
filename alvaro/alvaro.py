@@ -224,8 +224,17 @@ class Connection():
 
         self.verifiedUser = False
         self.currentUser = None
+        self.next_message_length = 0
+        self.downloading = False
 
         self.encData = False
+
+    def getDownloadProgress(self):
+        if not self.writer.is_closing():
+            if self.reader:
+                return len(self.reader._buffer), self.next_message_length
+                #       <current buffer length>, <target buffer length>
+        return 0
 
     async def send_data(self, data, metaData=None, enc=True):
         if type(data) != str and type(data) != bytes:
@@ -238,6 +247,7 @@ class Connection():
             data = self.currentUser.encryptData(data)
 
         data = data + self.sepChar
+        await self.send_raw( "msgLen={}".format(str(len(data)) ))
         self.writer.write(data)
         await self.writer.drain()
 
@@ -306,8 +316,10 @@ class Host():
         self.loginDelay = 0.6
         self.multithreading = multithreading
         self.loop = None
-        self.chunkSize = 1000
         self.defaultBlacklistTime = 600
+        self.download_indication_size = 1024 * 10
+        self.buffer_update_interval = .01
+        self.default_buffer_limit = 644245094400
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -322,7 +334,7 @@ class Host():
         self.blacklist = {}
         # Structure: {<IP_address>: <time.time()>}
 
-        self.lock = asyncio.Lock()
+        self._lock = asyncio.Lock()
 
         self.userPath = "users"
         self.users = {}
@@ -354,10 +366,10 @@ class Host():
                     pass
 
     async def saveUsers(self):
-        await self.lock.acquire()
+        await self._lock.acquire()
         for uName in self.users:
             self.users[uName].save(self.userPath)
-        self.lock.release()
+        self._lock.release()
 
     def addUser(self, username, password=None):
         user = User(username)
@@ -374,7 +386,7 @@ class Host():
             return False
 
     async def log(self, t):
-        await self.lock.acquire()
+        await self._lock.acquire()
         if type(t) == bytes: t = t.decode()
         logText = "[{}]\t{}\n".format(time.time(), t)
         if self.logging:
@@ -385,7 +397,7 @@ class Host():
         if self.verbose:
             sys.stdout.write(logText)
             sys.stdout.flush()
-        self.lock.release()
+        self._lock.release()
 
     def gotData(self, client, data, metaData):
         pass
@@ -421,6 +433,17 @@ class Host():
         else:
             self.blacklisted(addr)
 
+    def __buffer_monitor__(self, client, reader):
+        client.downloading = False
+        while self.running and not client.writer.is_closing():
+            if len(reader._buffer) >= self.download_indication_size and not client.downloading:
+                client.downloading = True
+                Thread(target=self.downloadStarted, args=[client]).start()
+            if not len(reader._buffer) and client.downloading:
+                client.downloading = False
+                Thread(target=self.downloadStopped, args=[client]).start()
+            time.sleep(self.buffer_update_interval)
+
     async def getData(self, client, reader, writer):
         data = b''
         try:
@@ -436,7 +459,13 @@ class Host():
     async def gotRawData(self, client, data):
         if type(data) == bytes:
             data = data.decode()
-        if data.startswith("LOGIN:") and "|" in data:
+
+        if data.startswith("msgLen=") and len(data) > 7:
+            if not data[7:].isalnum(): return
+            client.next_message_length = int(data[7:])
+            if client.next_message_length < self.default_buffer_limit:
+                client.reader._limit = client.next_message_length
+        elif data.startswith("LOGIN:") and "|" in data:
             if len(data.split("|")) == 2:
                 data = data[6:]
                 username, password = data.split("|")
@@ -462,7 +491,7 @@ class Host():
                 else:
                     await self.log("Login Failed - Username '{}' not recognized".format(username))
                     client.sendRaw(b'login failed')
-        if data.startswith("encData:"):
+        elif data.startswith("encData:"):
             await self.log( "{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]) )
             if data.split(":")[1] == "True":
                 client.encData = True
@@ -477,6 +506,7 @@ class Host():
         cliAddr = writer.get_extra_info('peername')
         client = Connection(cliAddr[0], cliAddr[1], reader, writer, self)
         self.clients.append(client)
+        Thread(target=self.__buffer_monitor__, args=[client, reader]).start()
 
         await self.log("New Connection: {}:{}".format(client.addr, client.port))
 
@@ -496,7 +526,7 @@ class Host():
         else:
             self.newClient(client)
 
-        while self.running:
+        while self.running and not writer.is_closing():
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout and not client.verifiedUser:
                     client.disconnect("Login timeout")
@@ -586,8 +616,11 @@ class Client():
         self.gotDisconnect = False
         self.loginFailed = False
         self.loop = None
-        self.buffer = b''
-        self.chunkSize = 1000
+        self.download_indication_size = 1024 * 10
+        self.buffer_update_interval = .01
+        self.next_message_length = 0
+        self.default_buffer_limit = 644245094400
+        self.downloading = False
 
         self.verifiedUser = False
         self.encData = False
@@ -646,6 +679,25 @@ class Client():
     def downloadStopped(self):
         pass
 
+    def getDownloadProgress(self):
+        if not self.writer.is_closing():
+            if self.reader:
+                return len(self.reader._buffer), self.next_message_length
+                #       <current buffer length>, <target buffer length>
+        return 0
+
+    def __buffer_monitor__(self, reader):
+        self.downloading = False
+        while self.connected and not self.writer.is_closing():
+            if len(reader._buffer) >= self.download_indication_size and not self.downloading:
+                self.downloading = True
+                Thread(target=self.downloadStarted).start()
+            if not len(reader._buffer) and self.downloading:
+                self.downloading = False
+                self.next_message_length = 0
+                Thread(target=self.downloadStopped).start()
+            time.sleep(self.buffer_update_interval)
+
     async def getData(self, reader, writer):
         data = b''
         try:
@@ -659,7 +711,15 @@ class Client():
         return data.rstrip(self.sepChar)
 
     async def gotRawData(self, data):
-        if data == b'login required':
+        if type(data) == bytes:
+            data = data.decode()
+
+        if data.startswith("msgLen=") and len(data) > 7:
+            if not data[7:].isalnum(): return
+            self.next_message_length = int(data[7:])
+            if self.next_message_length < self.default_buffer_limit:
+                self.reader._limit = self.next_message_length
+        elif data == "login required":
             if self.login[0] and self.login[1]:
                 username = self.login[0]
                 password = self.login[1]
@@ -672,27 +732,28 @@ class Client():
                 if type(password) == str:
                     password = password.encode()
                 self.sendRaw(b'LOGIN:'+username+b'|'+password)
-        if data == b'login accepted':
+        elif data == "login accepted":
             self.verifiedUser = True
             if self.multithreading:
                 Thread(target=self.loggedIn).start()
             else:
                 self.loggedIn()
-        if data == b'login failed':
+        elif data == "login failed":
             self.loginFailed = True
-        if data == b'disconnect':
+        elif data == "disconnect":
             self.gotDisconnect = True
 
     async def logout(self):
         self.sendRaw(b'logout')
 
     async def handleHost(self):
+        Thread(target=self.__buffer_monitor__, args=[self.reader]).start()
         if self.multithreading:
             Thread(target=self.madeConnection).start()
         else:
             self.madeConnection()
 
-        while self.connected and self.reader:
+        while self.connected and self.reader and not self.writer.is_closing():
             data = await self.getData(self.reader, self.writer)
             if not data:
                 self.connected = False
@@ -709,6 +770,7 @@ class Client():
                         Thread(target=self.gotData, args=[self, data, metaData]).start()
                     else:
                         self.gotData(self, data, metaData)
+        self.connected = False
         return self.lostConnection
 
     async def handleSelf(self):
@@ -759,6 +821,7 @@ class Client():
         if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
         data = data + self.sepChar
+        await self.send_raw( "msgLen={}".format(str(len(data)) ))
         self.writer.write(data)
         await self.writer.drain()
 
@@ -834,7 +897,11 @@ def echoData(client, data, metaData):
     client.sendData(data)
 
 def downloading(client):
-    print("Download started...")
+    print("Download started...\n")
+    while client.downloading:
+        dProg = client.getDownloadProgress()
+        sys.stdout.write("\r{}    ".format( dProg[0]/dProg[1] ))
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":
