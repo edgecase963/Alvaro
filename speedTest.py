@@ -11,7 +11,7 @@ def gotMessage(client, data, metaData):
     diff = time.time()-float(data)
     speed = int(1./diff)
     client.lst.append(speed)
-    viewThresh = 100
+    viewThresh = 1000
     if client.encData:
         viewThresh = 10
     try:

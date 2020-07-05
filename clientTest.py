@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import time, asyncio, threading
+import time, sys, asyncio, threading
 import alvaro
 
 
@@ -16,6 +16,10 @@ def connected():
 
 def downloading():
     print("Download started...")
+    while cli.downloading:
+        dProg = cli.getDownloadProgress()
+        sys.stdout.write("\r{}    ".format( dProg[0]/dProg[1] ))
+        sys.stdout.flush()
 
 
 
