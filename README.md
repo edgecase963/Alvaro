@@ -9,7 +9,7 @@ It offers SSL support, user management and many more features to help you on you
 
 To learn more, check out [the wiki!](https://github.com/edgecase963/Alvaro/wiki)
 
-This repository is built with simplicity and ease of use in mind. It is meant to do most of the difficult work of setting up servers and coding client mechanics while you can work on your project.
+Tired of spending hours, sometimes even days writing up complicated code just to get two devices to talk to one another? Alvaro is what you're looking for. All the difficult tasks of flow control, encryption and _endless_ bugs all taken care of for you! This project provides you the ability to create a fully functional server in just a few lines of code. So you can dive right into your project.
 
 After all, time is our most valuable resource.
 
