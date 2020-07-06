@@ -27,3 +27,9 @@ sudo python3.8 setup.py install
 ```
 
 This project is completely open source and anyone is free to use it.
+
+
+
+Alvaro comes with some built-in features to help make data transfer not just more reliable, but easier to manage and implement into your project. One of these is the ability to monitor an ongoing download.
+
+![Download Demo](demos/download_demo.gif)
