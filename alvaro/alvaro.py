@@ -900,7 +900,7 @@ def downloading(client):
     print("Download started...\n")
     while client.downloading:
         dProg = client.getDownloadProgress()
-        sys.stdout.write("\r{}    ".format( dProg[0]/dProg[1] ))
+        sys.stdout.write("\rProgress: {}%    ".format( int(dProg[0]/dProg[1] * 100.) ))
         sys.stdout.flush()
 
 
