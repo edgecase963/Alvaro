@@ -141,15 +141,15 @@ def dissectData(data):
     rawData = ""
     metaData = None
     if data.startswith(b'DATA:|'):
-        data = data[6:]   # Remove "DATA:|"
+        data = data.lstrip(b'DATA:|')   # Remove "DATA:|"
         dataLen = int(data[:18])   # Extract length of data
         data = data[18:]   # Remove the data length
         rawData = data[:dataLen]   # Get the raw data
         metaStr = data[dataLen:]   # Get the meta-data (if any)
         if metaStr != "":
             if metaStr.startswith(b'META:|'):   # Received Meta-Data
-                metaStr = metaStr[6:]   # Convert Meta-Data to dictionary
-                metaData = unpackMetaStr(metaStr)
+                metaStr = metaStr.lstrip(b'META:|')   # Remove "META:|"
+                metaData = unpackMetaStr(metaStr)   # Convert Meta-Data to dictionary
     else:
         return data, None, True
     return rawData, metaData, False
