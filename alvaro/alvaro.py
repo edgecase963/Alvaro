@@ -187,8 +187,7 @@ class User():
             cData, salt = encrypt( data, self.password.encode() )
             data = salt+cData
             return data
-        else:
-            return data
+        return data
 
     def decryptData(self, data):
         if self.hasPassword and self.password:
@@ -196,8 +195,7 @@ class User():
             cData = data[16:]
             data = decrypt( cData, salt, self.password.encode() )
             return data
-        else:
-            return data
+        return data
 
     def reset(self):
         self.password = None
@@ -237,9 +235,8 @@ class User():
             connection.verifiedUser = True
             connection.currentUser = self
             return True
-        else:
-            self.loginAttempts.append( [time.time(), connection.addr] )
-            return False
+        self.loginAttempts.append( [time.time(), connection.addr] )
+        return False
 
     def logout(self, client):
         client.verifiedUser = False
@@ -588,7 +585,8 @@ class Host():
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
-            if not data[7:].isalnum(): return
+            if not data[7:].isalnum():
+                return
             client.next_message_length = int(data[7:])
             if client.next_message_length < self.default_buffer_limit:
                 client.reader._limit = client.next_message_length
