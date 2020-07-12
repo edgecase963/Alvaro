@@ -366,6 +366,8 @@ class Host():
         self.download_indication_size = 1024 * 10
         self.buffer_update_interval = .01
         self.default_buffer_limit = 644245094400
+        self._loading_server = False
+        self._saving_server = False
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -425,13 +427,17 @@ class Host():
                     encryptFile(location, password)
         except Exception as e:
             await self.log("Error trying to save server information: {}".format(e))
+        self._saving_server = False
         self._lock.release()
 
-    def save(self, location, password=None):
+    def save(self, location, password=None, wait=False):
         if not self.loop:
             print("ERROR: Loop not running")
             return
+        self._saving_server = True
         asyncio.run_coroutine_threadsafe( self.__save_server_information__(location, password=password), self.loop )
+        if wait:
+            while self._saving_server: pass
 
     async def __load_server_information__(self, location, password=None):
         await self._lock.acquire()
@@ -453,12 +459,16 @@ class Host():
                             self.__dict__[sVar] = server_info[sVar]
         except Exception as e:
             await self.log("Error loading server information: {}".format(e))
+        self._loading_server = False
         self._lock.release()
 
-    def load(self, location, password=None):
+    def load(self, location, password=None, wait=False):
         if not self.loop:
             return False
+        self._loading_server = True
         asyncio.run_coroutine_threadsafe( self.__load_server_information__(location, password=password), self.loop )
+        if wait:
+            while self._loading_server: pass
 
     async def loadUsers(self):
         for i in os.listdir(self.userPath):
@@ -724,14 +734,15 @@ class Client():
         self.connection_updated = time.time()   # Last time the connection status was changed
         self.login = (None, None)
         self.multithreading = multithreading
-        self.gotDisconnect = False
-        self.loginFailed = False
         self.loop = None
         self.download_indication_size = 1024 * 10
         self.buffer_update_interval = .01
         self.next_message_length = 0
         self.default_buffer_limit = 644245094400
         self.downloading = False
+
+        self._got_disconnect = False
+        self._login_failed = False
 
         self.verifiedUser = False
         self.encData = False
@@ -850,9 +861,9 @@ class Client():
             else:
                 self.loggedIn()
         elif data == "login failed":
-            self.loginFailed = True
+            self._login_failed = True
         elif data == "disconnect":
-            self.gotDisconnect = True
+            self._got_disconnect = True
 
     async def logout(self):
         self.sendRaw(b'logout')
@@ -892,8 +903,8 @@ class Client():
 
     async def connect(self, hostAddr, hostPort, login=(None, None), useSSL=False, sslCert=None, buffer_limit=65536):
         self.login = login
-        self.gotDisconnect = False
-        self.loginFailed = False
+        self._got_disconnect = False
+        self._login_failed = False
         try:
             ssl_context = None
             if useSSL and sslCert:
@@ -980,7 +991,7 @@ class Client():
 
     def waitForLogin(self, timeout=None):
         startTime = time.time()
-        while not self.verifiedUser and not self.gotDisconnect and not self.loginFailed and self.connected:
+        while not self.verifiedUser and not self._got_disconnect and not self._login_failed and self.connected:
             try:
                 if timeout:
                     if time.time() >= startTime+float(timeout):
