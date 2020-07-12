@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-import time, sys, asyncio, threading
+import time
+import sys
+import asyncio
+import threading
 import alvaro
 
 
@@ -14,15 +17,12 @@ def gotMessage(client, data, metaData):
     viewThresh = 1000
     if client.encData:
         viewThresh = 10
-    try:
-        shortened_list = client.lst[len(client.lst)-viewThresh:]
-        client.lst = shortened_list
-        avg = int(sum(shortened_list) / len(shortened_list))
-        sys.stdout.write("\rAverage Speed: {} messages/s      ".format(avg))
-        sys.stdout.flush()
-        client.sendData( str(time.time()) )
-    except:
-        pass
+    shortened_list = client.lst[len(client.lst)-viewThresh:]
+    client.lst = shortened_list
+    avg = int(sum(shortened_list) / len(shortened_list))
+    sys.stdout.write("\rAverage Speed: {} messages/s      ".format(avg))
+    sys.stdout.flush()
+    client.sendData( str(time.time()) )
 
 def connected():
     print("Connected!")
@@ -48,7 +48,6 @@ if __name__ == "__main__":
     cliThread.start()
 
     c = cli.waitForConnection(timeout=6)
-    if c: print("Connected!")
 
     li = cli.waitForLogin(timeout=6)
 

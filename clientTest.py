@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-import time, sys, asyncio, threading
+import time
+import sys
+import asyncio
+import threading
 import alvaro
 
 
@@ -43,7 +46,6 @@ if __name__ == "__main__":
     cliThread.start()
 
     c = cli.waitForConnection(timeout=6)
-    if c: print("Connected!")
 
     li = cli.waitForLogin(timeout=6)
 

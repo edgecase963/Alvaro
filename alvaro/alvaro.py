@@ -1,10 +1,17 @@
 #!/usr/bin/env python
-import sys, os, time, asyncio, ssl, pickle, base64, cryptography
-from threading import Thread
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
+from threading import Thread
+import cryptography
+import asyncio
+import pickle
+import base64
+import time
+import sys
+import ssl
+import os
 
 
 
@@ -23,7 +30,8 @@ def encrypt(plainText, password):
     return cText, salt
 
 def encryptFile(filePath, password):
-    if type(password) == str: password = password.encode()
+    if isinstance(password, str):
+        password = password.encode()
     if not os.path.exists(filePath):
         return False
     if not os.path.isfile(filePath):
@@ -59,7 +67,8 @@ def decrypt(cText, salt, password):
         return False
 
 def decryptFile(filePath, password):
-    if type(password) == str: password = password.encode()
+    if isinstance(password, str):
+        password = password.encode()
     if not os.path.exists(filePath):
         print("ERROR: Path does not exist")
         return False
@@ -128,7 +137,7 @@ def prepData(data, metaData=None):
     # Prepares the data to be sent
     # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
     # (ignore spaces)
-    if type(data) == str:
+    if isinstance(data, str):
         data = data.encode()
     pData = ""
     pData = b'DATA:|' + str(len(data)).encode().zfill(18) + data
@@ -202,16 +211,13 @@ class User():
         return userCopy
 
     def save(self, userDir):
-        try:
-            savePath = os.path.join(userDir, self.username)
-            with open( savePath, "wb" ) as f:
-                pickle.dump(self.copy(), f)
-            return savePath
-        except:
-            return False
+        savePath = os.path.join(userDir, self.username)
+        with open( savePath, "wb" ) as f:
+            pickle.dump(self.copy(), f)
+        return savePath
 
     def verify(self, password):
-        if type(password) == str:
+        if isinstance(password, str):
             password = password.encode()
         if self.hasPassword:
             if self.cPass and password:
@@ -244,7 +250,7 @@ class User():
             self.password = None
 
     def addPassword(self, password):
-        if type(password) == str:
+        if isinstance(password, str):
             password = password.encode()
         if not self.hasPassword:
             cText, salt = encrypt(password, password)
@@ -281,9 +287,9 @@ class Connection():
         return 0
 
     async def send_data(self, data, metaData=None, enc=True):
-        if type(data) != str and type(data) != bytes:
+        if not isinstance(data, str) and not isinstance(data, bytes):
             data = str(data)
-        if type(data) == str:
+        if isinstance(data, str):
             data = data.encode()
         data = prepData(data, metaData=metaData)
 
@@ -304,9 +310,9 @@ class Connection():
 
     async def send_raw(self, data, enc=True):
         try:
-            if type(data) != str and type(data) != bytes:
+            if not isinstance(data, str) and not isinstance(data, bytes):
                 data = str(data)
-            if type(data) == str:
+            if isinstance(data, str):
                 data = data.encode()
 
             if self.verifiedUser and enc and self.encData:
@@ -422,7 +428,7 @@ class Host():
                 with open( location, "wb" ) as f:
                     pickle.dump(self.__pack_server_info__(), f)
                 if password:
-                    if type(password) == str:
+                    if isinstance(password, str):
                         password = password.encode()
                     encryptFile(location, password)
         except Exception as e:
@@ -437,7 +443,8 @@ class Host():
         self._saving_server = True
         asyncio.run_coroutine_threadsafe( self.__save_server_information__(location, password=password), self.loop )
         if wait:
-            while self._saving_server: pass
+            while self._saving_server:
+                pass
 
     async def __load_server_information__(self, location, password=None):
         await self._lock.acquire()
@@ -445,14 +452,14 @@ class Host():
             if os.path.exists(location):
                 if os.path.isfile(location):
                     if password:
-                        if type(password) == str:
+                        if isinstance(password, str):
                             password = password.encode()
-                        if type(password) == bytes:
+                        if isinstance(password, bytes):
                             decryptFile(location, password)
                     with open(location, "rb") as f:
                         server_info = pickle.load(f)
                     if password:
-                        if type(password) == bytes:
+                        if isinstance(password, bytes):
                             encryptFile(location, password)
                     for sVar in self._save_vars:
                         if sVar in self.__dict__ and sVar in server_info:
@@ -468,18 +475,16 @@ class Host():
         self._loading_server = True
         asyncio.run_coroutine_threadsafe( self.__load_server_information__(location, password=password), self.loop )
         if wait:
-            while self._loading_server: pass
+            while self._loading_server:
+                pass
 
     async def loadUsers(self):
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
             if os.path.isfile( iPath ):
-                try:
-                    with open(iPath, "rb") as f:
-                        user = pickle.load(f)
-                        self.users[user.username] = user
-                except:
-                    pass
+                with open(iPath, "rb") as f:
+                    user = pickle.load(f)
+                    self.users[user.username] = user
 
     async def saveUsers(self):
         await self._lock.acquire()
@@ -492,26 +497,27 @@ class Host():
     def addUser(self, username, password=None):
         user = User(username)
         if password:
-            if type(password) == bytes:
+            if isinstance(password, bytes):
                 password = password.decode()
-            if type(password) != str:
+            if isinstance(password, bytes):
                 password = str(password)
             user.addPassword(password)
         if not username in self.users:
             self.users[username] = user
             return True
-        else:
-            return False
+        return False
 
     async def log(self, t):
         await self._lock.acquire()
-        if type(t) == bytes: t = t.decode()
+        if isinstance(t, bytes):
+            t = t.decode()
         logText = "[{}]\t{}\n".format(time.time(), t)
         if self.logging:
             if not os.path.exists(self.logFile):
-                with open(self.logFile, "wb") as f: pass   # Create the path
-            with open(self.logFile, "rb") as f: logData = f.read()
-            with open(self.logFile, "wb") as f: f.write(logData + logText.encode())
+                with open(self.logFile, "wb") as f:
+                    pass   # Create the path
+            with open(self.logFile, "ab") as f:
+                f.write( logText.encode() )
         if self.verbose:
             sys.stdout.write(logText)
             sys.stdout.flush()
@@ -560,7 +566,7 @@ class Host():
             if len(reader._buffer) >= self.download_indication_size and not client.downloading:
                 client.downloading = True
                 Thread(target=self.downloadStarted, args=[client]).start()
-            if not len(reader._buffer) and client.downloading:
+            if not reader._buffer and client.downloading:
                 client.downloading = False
                 Thread(target=self.downloadStopped, args=[client]).start()
             time.sleep(self.buffer_update_interval)
@@ -578,7 +584,7 @@ class Host():
         return data.rstrip(self.sepChar)
 
     async def gotRawData(self, client, data):
-        if type(data) == bytes:
+        if isinstance(data, bytes):
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
@@ -687,7 +693,8 @@ class Host():
         server = None
 
         if self.logging:
-            if self.logFile == None: self.logFile = "log.txt"
+            if self.logFile is None:
+                self.logFile = "log.txt"
             await self.log("Starting server...")
 
         if not os.path.exists(self.userPath):
@@ -750,7 +757,7 @@ class Client():
     def setUserEncrypt(self, newValue):
         async def SET_USER_ENCD(self, newValue):
             self.encData = newValue
-        if type(newValue) == bool and self.loop:
+        if isinstance(newValue, bool) and self.loop:
             sData = "encData:{}".format(str(newValue))
             self.sendRaw(sData)
             asyncio.run_coroutine_threadsafe( SET_USER_ENCD(self, newValue), self.loop )
@@ -771,8 +778,7 @@ class Client():
             cData, salt = encrypt( data, self.login[1].encode() )
             data = salt+cData
             return data
-        else:
-            return data
+        return data
 
     def decryptData(self, data):
         if self.login[1]:
@@ -780,8 +786,7 @@ class Client():
             cData = data[16:]
             data = decrypt( cData, salt, self.login[1].encode() )
             return data
-        else:
-            return data
+        return data
 
     def gotData(self, data, metaData):
         pass
@@ -814,7 +819,7 @@ class Client():
             if len(reader._buffer) >= self.download_indication_size and not self.downloading:
                 self.downloading = True
                 Thread(target=self.downloadStarted).start()
-            if not len(reader._buffer) and self.downloading:
+            if not reader._buffer and self.downloading:
                 self.downloading = False
                 self.next_message_length = 0
                 Thread(target=self.downloadStopped).start()
@@ -833,11 +838,12 @@ class Client():
         return data.rstrip(self.sepChar)
 
     async def gotRawData(self, data):
-        if type(data) == bytes:
+        if isinstance(data, bytes):
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
-            if not data[7:].isalnum(): return
+            if not data[7:].isalnum():
+                return
             self.next_message_length = int(data[7:])
             if self.next_message_length < self.default_buffer_limit:
                 self.reader._limit = self.next_message_length
@@ -845,13 +851,13 @@ class Client():
             if self.login[0] and self.login[1]:
                 username = self.login[0]
                 password = self.login[1]
-                if type(username) != str and type(username) != bytes:
+                if not isinstance(username, str) and not isinstance(username, bytes):
                     username = str(username)
-                if type(username) == str:
+                if isinstance(username, str):
                     username = username.encode()
-                if type(password) != str and type(password) != bytes:
+                if not isinstance(password, str) and not isinstance(password, bytes):
                     password = str(password)
-                if type(password) == str:
+                if isinstance(password, str):
                     password = password.encode()
                 self.sendRaw(b'LOGIN:'+username+b'|'+password)
         elif data == "login accepted":
@@ -935,9 +941,9 @@ class Client():
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
-        if type(data) != str and type(data) != bytes:
+        if not isinstance(data, str) and not isinstance(data, bytes):
             data = str(data)
-        if type(data) == str:
+        if isinstance(data, str):
             data = data.encode()
         data = prepData(data, metaData=metaData)
         if self.login[1] and self.verifiedUser and self.encData:
@@ -961,9 +967,9 @@ class Client():
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
-        if type(data) != str and type(data) != bytes:
+        if not isinstance(data, str) and not isinstance(data, bytes):
             data = str(data)
-        if type(data) == str:
+        if isinstance(data, str):
             data = data.encode()
         if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
@@ -1024,6 +1030,8 @@ def downloading(client):
         dProg = client.getDownloadProgress()
         sys.stdout.write("\rProgress: {}%    ".format( int(dProg[0]/dProg[1] * 100.) ))
         sys.stdout.flush()
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
