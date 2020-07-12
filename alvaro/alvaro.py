@@ -427,7 +427,7 @@ class Host():
             await self.log("Error trying to save server information: {}".format(e))
         self._lock.release()
 
-    def save_server(self, location, password=None):
+    def save(self, location, password=None):
         if not self.loop:
             print("ERROR: Loop not running")
             return
@@ -455,7 +455,7 @@ class Host():
             await self.log("Error loading server information: {}".format(e))
         self._lock.release()
 
-    def load_server(self, location, password=None):
+    def load(self, location, password=None):
         if not self.loop:
             return False
         asyncio.run_coroutine_threadsafe( self.__load_server_information__(location, password=password), self.loop )
