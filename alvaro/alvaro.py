@@ -528,6 +528,9 @@ class Host():
     def downloadStopped(self, client):
         pass
 
+    def serverStarted(self, server):
+        pass
+
     async def blacklistIP(self, addr, bTime=None):
         if not bTime:
             bTime = self.defaultBlacklistTime
@@ -700,6 +703,7 @@ class Host():
 
         if server:
             await self.log("Server started")
+            Thread( target=self.serverStarted, args=[self] ).start()
             async with server:
                 await server.serve_forever()
         else:
