@@ -1030,6 +1030,8 @@ def downloading(client):
         dProg = client.getDownloadProgress()
         sys.stdout.write("\rProgress: {}%    ".format( int(dProg[0]/dProg[1] * 100.) ))
         sys.stdout.flush()
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
