@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 from threading import Thread
 import cryptography
 import asyncio
+import json
 import pickle
 import base64
 import time
@@ -333,7 +334,7 @@ class Connection():
             return
         if self.server:
             if self.server.loop:
-                asyncio.run_coroutine_threadsafe( self.server.log("Disconnecting {} - {}...".format(self.addr, reason)), self.server.loop )
+                self.server.log("Disconnecting {} - {}...".format(self.addr, reason))
         self.sendRaw("disconnect")
         try:
             self.writer.close()
@@ -369,8 +370,6 @@ class Host():
         self.download_indication_size = 1024 * 10
         self.buffer_update_interval = .01
         self.default_buffer_limit = 644245094400
-        self._loading_server = False
-        self._saving_server = False
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -415,65 +414,36 @@ class Host():
         t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
         t.start()
 
-    async def __save_server_information__(self, location, password=None):
-        await self._lock.acquire()
-        try:
-            location = location.rstrip("/")
-            base_name = os.path.basename(location)
-            location_directory = location.rstrip( base_name )
-            if os.path.exists(location_directory) or location.count("/") == 0:
-                with open( location, "wb" ) as f:
-                    pickle.dump(self.__pack_server_info__(), f)
+    def save(self, location, password=None):
+        location = location.rstrip("/")
+        base_name = os.path.basename(location)
+        location_directory = location.rstrip( base_name )
+        if os.path.exists(location_directory) or location.count("/") == 0:
+            if not (location.endswith(".json")):
+                location += ".json"
+            with open( location, "w" ) as f:
+                json.dump(self.__pack_server_info__(), f)
+            if password:
+                if isinstance(password, str):
+                    password = password.encode()
+                encryptFile(location, password)
+
+    def load(self, location, password=None, wait=False):
+        if os.path.exists(location):
+            if os.path.isfile(location):
                 if password:
                     if isinstance(password, str):
                         password = password.encode()
-                    encryptFile(location, password)
-        except Exception as e:
-            await self.log("Error trying to save server information: {}".format(e))
-        self._saving_server = False
-        self._lock.release()
-
-    def save(self, location, password=None, wait=False):
-        if not self.loop:
-            print("ERROR: Loop not running")
-            return
-        self._saving_server = True
-        asyncio.run_coroutine_threadsafe( self.__save_server_information__(location, password=password), self.loop )
-        if wait:
-            while self._saving_server:
-                pass
-
-    async def __load_server_information__(self, location, password=None):
-        await self._lock.acquire()
-        try:
-            if os.path.exists(location):
-                if os.path.isfile(location):
-                    if password:
-                        if isinstance(password, str):
-                            password = password.encode()
-                        if isinstance(password, bytes):
-                            decryptFile(location, password)
-                    with open(location, "rb") as f:
-                        server_info = pickle.load(f)
-                    if password:
-                        if isinstance(password, bytes):
-                            encryptFile(location, password)
-                    for sVar in self._save_vars:
-                        if sVar in self.__dict__ and sVar in server_info:
-                            self.__dict__[sVar] = server_info[sVar]
-        except Exception as e:
-            await self.log("Error loading server information: {}".format(e))
-        self._loading_server = False
-        self._lock.release()
-
-    def load(self, location, password=None, wait=False):
-        if not self.loop:
-            return False
-        self._loading_server = True
-        asyncio.run_coroutine_threadsafe( self.__load_server_information__(location, password=password), self.loop )
-        if wait:
-            while self._loading_server:
-                pass
+                    if isinstance(password, bytes):
+                        decryptFile(location, password)
+                with open(location, "rb") as f:
+                    server_info = json.load(f)
+                if password:
+                    if isinstance(password, bytes):
+                        encryptFile(location, password)
+                for sVar in self._save_vars:
+                    if sVar in self.__dict__ and sVar in server_info:
+                        self.__dict__[sVar] = server_info[sVar]
 
     async def loadUsers(self):
         for i in os.listdir(self.userPath):
@@ -504,11 +474,11 @@ class Host():
             return True
         return False
 
-    async def log(self, t):
+    async def __add_to_log__(self, text):
         await self._lock.acquire()
-        if isinstance(t, bytes):
-            t = t.decode()
-        logText = "[{}]\t{}\n".format(time.time(), t)
+        if isinstance(text, bytes):
+            text = text.decode()
+        logText = "[{}]\t{}\n".format(time.time(), text)
         if self.logging:
             if not os.path.exists(self.logFile):
                 with open(self.logFile, "wb") as f:
@@ -519,6 +489,11 @@ class Host():
             sys.stdout.write(logText)
             sys.stdout.flush()
         self._lock.release()
+
+    def log(self, text):
+        if not self.loop:
+            print("Loop not running - unable to log text")
+        asyncio.run_coroutine_threadsafe( self.__add_to_log__(text), self.loop )
 
     def gotData(self, client, data, metaData):
         pass
@@ -548,7 +523,7 @@ class Host():
         if not bTime:
             bTime = self.defaultBlacklistTime
         self.blacklist[addr] = time.time()+bTime
-        await self.log( "Blacklisted {} for {} seconds".format(addr, bTime) )
+        self.log( "Blacklisted {} for {} seconds".format(addr, bTime) )
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect("Blacklisted")
@@ -573,11 +548,11 @@ class Host():
         try:
             data = await reader.readuntil(self.sepChar)
         except asyncio.LimitOverrunError as e:
-            await self.log("ERROR: Buffer limit too small for incoming data ( asyncio.LimitOverrunError ) - {}:{}".format(client.addr, client.port))
+            self.log("ERROR: Buffer limit too small for incoming data ( asyncio.LimitOverrunError ) - {}:{}".format(client.addr, client.port))
         except asyncio.exceptions.IncompleteReadError:
-            await self.log( "asyncio.exceptions.IncompleteReadError - {}:{}".format(client.addr, client.port) )
+            self.log( "asyncio.exceptions.IncompleteReadError - {}:{}".format(client.addr, client.port) )
         except Exception as e:
-            await self.log( "{} - {}:{}".format(e, client.addr, client.port) )
+            self.log( "{} - {}:{}".format(e, client.addr, client.port) )
         return data.rstrip(self.sepChar)
 
     async def gotRawData(self, client, data):
@@ -595,18 +570,18 @@ class Host():
                 data = data[6:]
                 username, password = data.split("|")
                 if username in self.users:
-                    await self.log("Login acquired - verifying...")
+                    self.log("Login acquired - verifying...")
                     user = self.users[username]
                     time.sleep(self.loginDelay)
                     if user.login(username, password, client):
-                        await self.log("{} logged in".format(username))
+                        self.log("{} logged in".format(username))
                         client.sendRaw(b'login accepted', enc=False)
                         if self.multithreading:
                             Thread(target=self.loggedIn, args=[client, user]).start()
                         else:
                             self.loggedIn(client, user)
                     else:
-                        await self.log( "Failed login attempt - {} - {}:{}".format(username, client.addr, client.port) )
+                        self.log( "Failed login attempt - {} - {}:{}".format(username, client.addr, client.port) )
                         self.loginAttempts.append( [time.time(), client.addr] )
 
                         if len( [i for i in self.loginAttempts if i[0] >= time.time()-self.blacklistThreshold] ) > self.blacklistLimit:
@@ -614,10 +589,10 @@ class Host():
 
                         client.disconnect("Failed login")
                 else:
-                    await self.log("Login Failed - Username '{}' not recognized".format(username))
+                    self.log("Login Failed - Username '{}' not recognized".format(username))
                     client.sendRaw(b'login failed')
         elif data.startswith("encData:"):
-            await self.log( "{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]) )
+            self.log( "{} set encryption to {}".format(client.currentUser.username, data.split(":")[1]) )
             if data.split(":")[1] == "True":
                 client.encData = True
             elif data.split(":")[1] == "False":
@@ -625,7 +600,7 @@ class Host():
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
-                await self.log( "User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port) )
+                self.log( "User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port) )
 
     async def handleClient(self, reader, writer):
         cliAddr = writer.get_extra_info('peername')
@@ -633,7 +608,7 @@ class Host():
         self.clients.append(client)
         Thread(target=self.__buffer_monitor__, args=[client, reader]).start()
 
-        await self.log("New Connection: {}:{}".format(client.addr, client.port))
+        self.log("New Connection: {}:{}".format(client.addr, client.port))
 
         if client.addr in self.blacklist:
             if self.blacklist[client.addr] < time.time():
@@ -671,7 +646,7 @@ class Host():
                     else:
                         self.gotData(client, data, metaData)
 
-        await self.log("Lost Connection: {}:{}".format(client.addr, client.port))
+        self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
         try:
             writer.close()
@@ -693,37 +668,37 @@ class Host():
         if self.logging:
             if self.logFile is None:
                 self.logFile = "log.txt"
-            await self.log("Starting server...")
+            self.log("Starting server...")
 
         if not os.path.exists(self.userPath):
-            await self.log("Creating user directory")
+            self.log("Creating user directory")
             os.mkdir(self.userPath)
-        await self.log("Loading users...")
+        self.log("Loading users...")
         await self.loadUsers()
-        await self.log("Users loaded")
+        self.log("Users loaded")
 
         if useSSL and sslCert and sslKey:
-            await self.log("Loading SSL certificate...")
+            self.log("Loading SSL certificate...")
             if os.path.exists(sslCert) and os.path.exists(sslKey):
                 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 ssl_context.load_cert_chain(sslCert, sslKey)
-                await self.log("SSL certificate loaded")
+                self.log("SSL certificate loaded")
 
                 server = await asyncio.start_server(self.handleClient, self.addr, self.port, ssl=ssl_context, limit=buffer_limit)
             else:
-                await self.log("Unable to load certificate files")
+                self.log("Unable to load certificate files")
                 return
         else:
             server = await asyncio.start_server(self.handleClient, self.addr, self.port, limit=buffer_limit)
 
         if server:
-            await self.log("Server started")
+            self.log("Server started")
             Thread( target=self.serverStarted, args=[self] ).start()
             async with server:
                 await server.serve_forever()
         else:
             self.running = False
-            await self.log("Unable to start server")
+            self.log("Unable to start server")
 
 
 
