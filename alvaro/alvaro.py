@@ -22,6 +22,23 @@ def encrypt(plainText, password):
     cText = f.encrypt(plainText)
     return cText, salt
 
+def encryptFile(filePath, password):
+    if type(password) == str: password = password.encode()
+    if not os.path.exists(filePath):
+        return False
+    if not os.path.isfile(filePath):
+        return False
+    try:
+        with open(filePath, "rb") as f:
+            data = f.read()
+        cipherData, salt = encrypt(data, password)
+        with open(filePath, "wb") as f:
+            f.write(b'ENCRYPTED_FILE'+salt+cipherData)
+        return True
+    except Exception as e:
+        print("Error encrypting file: {}".format(e))
+        return False
+
 def decrypt(cText, salt, password):
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -38,8 +55,34 @@ def decrypt(cText, salt, password):
     except cryptography.fernet.InvalidToken:
         return False
     except Exception as e:
-        print( "ERROR: {}".format(e) )
+        print( "Error decrypting data: {}".format(e) )
         return False
+
+def decryptFile(filePath, password):
+    if type(password) == str: password = password.encode()
+    if not os.path.exists(filePath):
+        print("ERROR: Path does not exist")
+        return False
+    if not os.path.isfile(filePath):
+        print("ERROR: Path is a directory")
+        return False
+    try:
+        with open(filePath, "rb") as f:
+            data = f.read()
+        if not data.startswith(b'ENCRYPTED_FILE'):
+            return True
+        else:
+            data = data.lstrip(b'ENCRYPTED_FILE')
+        if len(data) <= 16:
+            print("ERROR: File data corrupt or not encrypted")
+            return False
+        salt = data[:16]
+        cipherData = data.lstrip(salt)
+        plainData = decrypt(cipherData, salt, password)
+        with open(filePath, "wb") as f:
+            f.write(plainData)
+    except Exception as e:
+        print("Error decrypting file: {}".format(e))
 
 
 def convVarType(var, t):
@@ -98,15 +141,15 @@ def dissectData(data):
     rawData = ""
     metaData = None
     if data.startswith(b'DATA:|'):
-        data = data[6:]   # Remove "DATA:|"
+        data = data.lstrip(b'DATA:|')   # Remove "DATA:|"
         dataLen = int(data[:18])   # Extract length of data
         data = data[18:]   # Remove the data length
         rawData = data[:dataLen]   # Get the raw data
         metaStr = data[dataLen:]   # Get the meta-data (if any)
         if metaStr != "":
             if metaStr.startswith(b'META:|'):   # Received Meta-Data
-                metaStr = metaStr[6:]   # Convert Meta-Data to dictionary
-                metaData = unpackMetaStr(metaStr)
+                metaStr = metaStr.lstrip(b'META:|')   # Remove "META:|"
+                metaData = unpackMetaStr(metaStr)   # Convert Meta-Data to dictionary
     else:
         return data, None, True
     return rawData, metaData, False
@@ -160,9 +203,10 @@ class User():
 
     def save(self, userDir):
         try:
-            with open( os.path.join(userDir, self.username), "wb" ) as f:
+            savePath = os.path.join(userDir, self.username)
+            with open( savePath, "wb" ) as f:
                 pickle.dump(self.copy(), f)
-            return True
+            return savePath
         except:
             return False
 
@@ -282,6 +326,8 @@ class Connection():
                 print("Error sending data: {}".format(e))
 
     def disconnect(self, reason=None):
+        if self.writer.is_closing():
+            return
         if self.server:
             if self.server.loop:
                 asyncio.run_coroutine_threadsafe( self.server.log("Disconnecting {} - {}...".format(self.addr, reason)), self.server.loop )
@@ -332,7 +378,7 @@ class Host():
         self.blacklistLimit = 6
 
         self.blacklist = {}
-        # Structure: {<IP_address>: <time.time()>}
+        # Structure: { <IP_address>: <time.time() + duration> }
 
         self._lock = asyncio.Lock()
 
@@ -342,6 +388,16 @@ class Host():
 
         self.logging = logging
         self.logFile = logFile
+
+        self._save_vars = ["blacklist", "loginAttempts"]
+        # A list containing all server variables that will be saved when `self.save_server` is executed
+
+    def __pack_server_info__(self):
+        server_info = {}
+        for sVar in self._save_vars:
+            if sVar in self.__dict__:
+                server_info[sVar] = self.__dict__[sVar]
+        return server_info
 
     def __start_loop__(self, loop, task, finishFunc):
         asyncio.set_event_loop(loop)
@@ -353,6 +409,56 @@ class Host():
         new_loop = asyncio.new_event_loop()
         t = Thread( target=self.__start_loop__, args=(new_loop, task, finishFunc) )
         t.start()
+
+    async def __save_server_information__(self, location, password=None):
+        await self._lock.acquire()
+        try:
+            location = location.rstrip("/")
+            base_name = os.path.basename(location)
+            location_directory = location.rstrip( base_name )
+            if os.path.exists(location_directory) or location.count("/") == 0:
+                with open( location, "wb" ) as f:
+                    pickle.dump(self.__pack_server_info__(), f)
+                if password:
+                    if type(password) == str:
+                        password = password.encode()
+                    encryptFile(location, password)
+        except Exception as e:
+            await self.log("Error trying to save server information: {}".format(e))
+        self._lock.release()
+
+    def save_server(self, location, password=None):
+        if not self.loop:
+            print("ERROR: Loop not running")
+            return
+        asyncio.run_coroutine_threadsafe( self.__save_server_information__(location, password=password), self.loop )
+
+    async def __load_server_information__(self, location, password=None):
+        await self._lock.acquire()
+        try:
+            if os.path.exists(location):
+                if os.path.isfile(location):
+                    if password:
+                        if type(password) == str:
+                            password = password.encode()
+                        if type(password) == bytes:
+                            decryptFile(location, password)
+                    with open(location, "rb") as f:
+                        server_info = pickle.load(f)
+                    if password:
+                        if type(password) == bytes:
+                            encryptFile(location, password)
+                    for sVar in self._save_vars:
+                        if sVar in self.__dict__ and sVar in server_info:
+                            self.__dict__[sVar] = server_info[sVar]
+        except Exception as e:
+            await self.log("Error loading server information: {}".format(e))
+        self._lock.release()
+
+    def load_server(self, location, password=None):
+        if not self.loop:
+            return False
+        asyncio.run_coroutine_threadsafe( self.__load_server_information__(location, password=password), self.loop )
 
     async def loadUsers(self):
         for i in os.listdir(self.userPath):
@@ -367,8 +473,10 @@ class Host():
 
     async def saveUsers(self):
         await self._lock.acquire()
-        for uName in self.users:
-            self.users[uName].save(self.userPath)
+        for userName in self.users:
+            savePath = self.users[userName].save(self.userPath)
+            if savePath and password:
+                pass
         self._lock.release()
 
     def addUser(self, username, password=None):
@@ -418,6 +526,9 @@ class Host():
         pass
 
     def downloadStopped(self, client):
+        pass
+
+    def serverStarted(self, server):
         pass
 
     async def blacklistIP(self, addr, bTime=None):
@@ -514,7 +625,6 @@ class Host():
             if self.blacklist[client.addr] < time.time():
                 self.blacklist.pop(client.addr)
             else:
-                await self.log("{} is blacklisted - disconnecting...".format(client.addr))
                 client.disconnect("Blacklisted")
                 return
 
@@ -593,6 +703,7 @@ class Host():
 
         if server:
             await self.log("Server started")
+            Thread( target=self.serverStarted, args=[self] ).start()
             async with server:
                 await server.serve_forever()
         else:
