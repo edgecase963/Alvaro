@@ -7,7 +7,6 @@ from threading import Thread
 import cryptography
 import asyncio
 import json
-import pickle
 import base64
 import time
 import sys
@@ -202,18 +201,53 @@ class User():
         self.password = None
         self.connections = []
 
-    def copy(self):
-        userCopy = User(self.username)
-        userCopy.cPass = self.cPass
-        userCopy.hasPassword = self.hasPassword
-        userCopy.loginAttempts = self.loginAttempts
-        return userCopy
-
     def save(self, userDir):
-        savePath = os.path.join(userDir, self.username)
-        with open( savePath, "wb" ) as f:
-            pickle.dump(self.copy(), f)
+        user_info = {
+        "username": self.username,
+        "hasPassword": self.hasPassword,
+        "loginHistory": self.loginHistory,
+        "loginAttempts": self.loginAttempts
+        }
+
+        if self.cPass and self.hasPassword:
+            secret_info = self.cPass[1] + self.cPass[0]
+
+        savePath = os.path.join(userDir, self.username+".json")
+        secretPath = os.path.join(userDir, self.username+"-secret")
+
+        with open( savePath, "w" ) as f:
+            json.dump(user_info, f)
+        if self.cPass and self.hasPassword:
+            with open( secretPath, "wb" ) as f:
+                f.write(secret_info)
         return savePath
+
+    def load(self, filePath):
+        filePath = filePath.rstrip("/")
+        if not os.path.exists(filePath):
+            return
+        fileName = os.path.basename(filePath)
+        userDir = filePath.rstrip(fileName)
+
+        if fileName.endswith(".json"):
+            secretPath = os.path.join(userDir, fileName.replace(".json", "-secret"))
+            with open(filePath, "r") as f:
+                user_info = json.load(f)
+
+            secret_info = None
+            if os.path.exists(secretPath):
+                with open(secretPath, "rb") as f:
+                    secret_info = f.read()
+            if secret_info and user_info["hasPassword"]:
+                if len(secret_info) > 16:
+                    self.cPass = [secret_info[:16]]
+                    self.cPass.insert( 0, secret_info.lstrip(self.cPass[0]) )
+
+            self.username = user_info["username"]
+            self.hasPassword = user_info["hasPassword"]
+            self.loginHistory = user_info["loginHistory"]
+            self.loginAttempts = user_info["loginAttempts"]
+            return self
 
     def verify(self, password):
         if isinstance(password, str):
@@ -445,28 +479,31 @@ class Host():
                     if sVar in self.__dict__ and sVar in server_info:
                         self.__dict__[sVar] = server_info[sVar]
 
-    async def loadUsers(self):
+    def loadUsers(self):
+        self.log("Loading users...")
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
-            if os.path.isfile( iPath ):
-                with open(iPath, "rb") as f:
-                    user = pickle.load(f)
-                    self.users[user.username] = user
+            if os.path.isfile( iPath ) and iPath.endswith(".json"):
+                user = User("").load(iPath)
+                self.users[user.username] = user
+        self.log("Users loaded")
 
     async def saveUsers(self):
+        self.log("Saving users...")
         await self._lock.acquire()
-        for userName in self.users:
-            savePath = self.users[userName].save(self.userPath)
-            if savePath and password:
-                pass
+        for username in self.users:
+            savePath = self.users[username].save(self.userPath)
         self._lock.release()
+        self.log("Users saved")
 
     def addUser(self, username, password=None):
+        if "." in username:
+            return False
         user = User(username)
         if password:
             if isinstance(password, bytes):
                 password = password.decode()
-            if isinstance(password, bytes):
+            if not isinstance(password, str):
                 password = str(password)
             user.addPassword(password)
         if not username in self.users:
@@ -673,9 +710,8 @@ class Host():
         if not os.path.exists(self.userPath):
             self.log("Creating user directory")
             os.mkdir(self.userPath)
-        self.log("Loading users...")
-        await self.loadUsers()
-        self.log("Users loaded")
+
+        self.loadUsers()
 
         if useSSL and sslCert and sslKey:
             self.log("Loading SSL certificate...")
