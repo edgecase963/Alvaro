@@ -238,8 +238,7 @@ class User():
                     secret_info = f.read()
             if secret_info and user_info["hasPassword"]:
                 if len(secret_info) > 16:
-                    self.cPass = [secret_info[:16]]
-                    self.cPass.insert( 0, secret_info.lstrip(self.cPass[0]) )
+                    self.cPass = [secret_info[16:], secret_info[:16]]
 
             self.username = user_info["username"]
             self.hasPassword = user_info["hasPassword"]
