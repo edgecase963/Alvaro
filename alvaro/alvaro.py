@@ -101,7 +101,7 @@ def convVarType(var, t):
         if var.lower() == "false":
             return False
         return bool(var)
-    elif t in varDict:
+    if t in varDict:
         return varDict[t](var)
     return var
 
