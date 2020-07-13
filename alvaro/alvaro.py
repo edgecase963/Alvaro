@@ -80,8 +80,7 @@ def decryptFile(filePath, password):
             data = f.read()
         if not data.startswith(b'ENCRYPTED_FILE'):
             return True
-        else:
-            data = data.lstrip(b'ENCRYPTED_FILE')
+        data = data.lstrip(b'ENCRYPTED_FILE')
         if len(data) <= 16:
             print("ERROR: File data corrupt or not encrypted")
             return False
@@ -99,10 +98,9 @@ def convVarType(var, t):
     if t.lower() == "b":
         if var.lower() == "true":
             return True
-        elif var.lower() == "false":
+        if var.lower() == "false":
             return False
-        else:
-            return bool(var)
+        return bool(var)
     elif t in varDict:
         return varDict[t](var)
     return var
