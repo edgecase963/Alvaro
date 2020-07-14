@@ -170,7 +170,7 @@ def dissectData(data):
 class User():
     def __init__(self, username):
         self.username = username
-        self.cPass = None   # The encrypted password (ciphertext, salt)
+        self._cipher_pass = None   # The encrypted password (ciphertext, salt)
         self.password = None   # This stays at `None` until the user is verified
         self.hasPassword = False
 
@@ -211,15 +211,15 @@ class User():
         "loginAttempts": self.loginAttempts
         }
 
-        if self.cPass and self.hasPassword:
-            secret_info = self.cPass[1] + self.cPass[0]
+        if self._cipher_pass and self.hasPassword:
+            secret_info = self._cipher_pass[1] + self._cipher_pass[0]
 
         savePath = os.path.join(userDir, self.username+".json")
         secretPath = os.path.join(userDir, self.username+"-secret")
 
         with open( savePath, "w" ) as f:
             json.dump(user_info, f)
-        if self.cPass and self.hasPassword:
+        if self._cipher_pass and self.hasPassword:
             with open( secretPath, "wb" ) as f:
                 f.write(secret_info)
         return savePath
@@ -242,7 +242,7 @@ class User():
                     secret_info = f.read()
             if secret_info and user_info["hasPassword"]:
                 if len(secret_info) > 16:
-                    self.cPass = [secret_info[16:], secret_info[:16]]
+                    self._cipher_pass = [secret_info[16:], secret_info[:16]]
 
             self.username = user_info["username"]
             self.hasPassword = user_info["hasPassword"]
@@ -254,8 +254,8 @@ class User():
         if isinstance(password, str):
             password = password.encode()
         if self.hasPassword:
-            if self.cPass and password:
-                if password == decrypt( self.cPass[0], self.cPass[1], password ):
+            if self._cipher_pass and password:
+                if password == decrypt( self._cipher_pass[0], self._cipher_pass[1], password ):
                     return True
             else:
                 return False
@@ -287,7 +287,7 @@ class User():
             password = password.encode()
         if not self.hasPassword:
             cText, salt = encrypt(password, password)
-            self.cPass = [cText, salt]
+            self._cipher_pass = [cText, salt]
             self.password = password
             self.hasPassword = True
         return self
