@@ -290,7 +290,6 @@ class User():
             self._cipher_pass = [cText, salt]
             self.password = password
             self.hasPassword = True
-        return self
 
 
 class Connection():
