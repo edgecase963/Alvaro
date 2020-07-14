@@ -16,6 +16,8 @@ import os
 
 
 def encrypt(plainText, password):
+    if isinstance(password, str):
+        password = password.encode()
     salt = os.urandom(16)
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -48,6 +50,8 @@ def encryptFile(filePath, password):
         return False
 
 def decrypt(cText, salt, password):
+    if isinstance(password, str):
+        password = password.encode()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
