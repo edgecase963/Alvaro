@@ -97,6 +97,13 @@ def decryptFile(filePath, password):
         print("Error decrypting file: {}".format(e))
 
 
+def make_bytes(var):
+    if isinstance(var, str):
+        var = var.encode()
+    if not isinstance(var, bytes):
+        return make_bytes(str(var))
+    return var
+
 def convVarType(var, t):
     varDict = {"s": str, "i": int, "f": float}
     if t.lower() == "b":
@@ -290,7 +297,6 @@ class User():
             self._cipher_pass = [cText, salt]
             self.password = password
             self.hasPassword = True
-        return self
 
 
 class Connection():
@@ -320,10 +326,7 @@ class Connection():
         return 0
 
     async def send_data(self, data, metaData=None, enc=True):
-        if not isinstance(data, str) and not isinstance(data, bytes):
-            data = str(data)
-        if isinstance(data, str):
-            data = data.encode()
+        data = make_bytes(data)
         data = prepData(data, metaData=metaData)
 
         if self.verifiedUser and enc and self.encData:
@@ -343,10 +346,7 @@ class Connection():
 
     async def send_raw(self, data, enc=True):
         try:
-            if not isinstance(data, str) and not isinstance(data, bytes):
-                data = str(data)
-            if isinstance(data, str):
-                data = data.encode()
+            data = make_bytes(data)
 
             if self.verifiedUser and enc and self.encData:
                 data = self.currentUser.encryptData(data)
@@ -861,14 +861,8 @@ class Client():
             if self.login[0] and self.login[1]:
                 username = self.login[0]
                 password = self.login[1]
-                if not isinstance(username, str) and not isinstance(username, bytes):
-                    username = str(username)
-                if isinstance(username, str):
-                    username = username.encode()
-                if not isinstance(password, str) and not isinstance(password, bytes):
-                    password = str(password)
-                if isinstance(password, str):
-                    password = password.encode()
+                username = make_bytes(username)
+                password = make_bytes(password)
                 self.sendRaw(b'LOGIN:'+username+b'|'+password)
         elif data == "login accepted":
             self.verifiedUser = True
@@ -951,10 +945,7 @@ class Client():
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
-        if not isinstance(data, str) and not isinstance(data, bytes):
-            data = str(data)
-        if isinstance(data, str):
-            data = data.encode()
+        data = make_bytes(data)
         data = prepData(data, metaData=metaData)
         if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
@@ -977,10 +968,7 @@ class Client():
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
-        if not isinstance(data, str) and not isinstance(data, bytes):
-            data = str(data)
-        if isinstance(data, str):
-            data = data.encode()
+        data = make_bytes(data)
         if self.login[1] and self.verifiedUser and self.encData:
             data = self.encryptData(data)
         data = data + self.sepChar
