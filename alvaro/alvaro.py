@@ -6,12 +6,14 @@ from cryptography.fernet import Fernet
 from threading import Thread
 import cryptography
 import asyncio
+import uvloop
 import json
 import base64
 import time
 import sys
 import ssl
 import os
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 
@@ -405,6 +407,7 @@ class Host():
         self.download_indication_size = 1024 * 10
         self.buffer_update_interval = .01
         self.default_buffer_limit = 644245094400
+        self._enable_buffer_monitor = True
 
         self.loginAttempts = []
         # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
@@ -489,12 +492,10 @@ class Host():
                 self.users[user.username] = user
         self.log("Users loaded")
 
-    async def saveUsers(self):
+    def saveUsers(self):
         self.log("Saving users...")
-        await self._lock.acquire()
         for username in self.users:
             savePath = self.users[username].save(self.userPath)
-        self._lock.release()
         self.log("Users saved")
 
     def addUser(self, username, password=None):
@@ -581,7 +582,7 @@ class Host():
                 Thread(target=self.downloadStopped, args=[client]).start()
             time.sleep(self.buffer_update_interval)
 
-    async def getData(self, client, reader, writer):
+    async def getData(self, client, reader):
         data = b''
         try:
             data = await reader.readuntil(self.sepChar)
@@ -608,7 +609,7 @@ class Host():
                 data = data[6:]
                 username, password = data.split("|")
                 if username in self.users:
-                    self.log("Login acquired - verifying...")
+                    self.log( "Login acquired - verifying {}...".format(client.addr) )
                     user = self.users[username]
                     time.sleep(self.loginDelay)
                     if user.login(username, password, client):
@@ -641,10 +642,12 @@ class Host():
                 self.log( "User logged out - {} - {}:{}".format(client.currentUser.username, client.addr, client.port) )
 
     async def handleClient(self, reader, writer):
-        cliAddr = writer.get_extra_info('peername')
-        client = Connection(cliAddr[0], cliAddr[1], reader, writer, self)
+        addr, port = writer.get_extra_info('peername')
+        client = Connection(addr, port, reader, writer, self)
         self.clients.append(client)
-        Thread(target=self.__buffer_monitor__, args=[client, reader]).start()
+
+        if self._enable_buffer_monitor:
+            Thread( target=self.__buffer_monitor__, args=[client, reader] ).start()
 
         self.log("New Connection: {}:{}".format(client.addr, client.port))
 
@@ -659,7 +662,7 @@ class Host():
             client.sendRaw(b'login required')
 
         if self.multithreading:
-            Thread(target=self.newClient, args=[client]).start()
+            Thread( target=self.newClient, args=[client] ).start()
         else:
             self.newClient(client)
 
@@ -667,7 +670,7 @@ class Host():
             if self.loginRequired and not client.verifiedUser:
                 if time.time() - client.connectionTime >= self.loginTimeout and not client.verifiedUser:
                     client.disconnect("Login timeout")
-            data = await self.getData(client, reader, writer)
+            data = await self.getData(client, reader)
             if not data:
                 break
 
@@ -756,6 +759,8 @@ class Client():
         self.buffer_update_interval = .01
         self.next_message_length = 0
         self.default_buffer_limit = 644245094400
+        self._enable_buffer_monitor = True
+
         self.downloading = False
 
         self._got_disconnect = False
@@ -879,7 +884,9 @@ class Client():
         self.sendRaw(b'logout')
 
     async def handleHost(self):
-        Thread(target=self.__buffer_monitor__, args=[self.reader]).start()
+        if self._enable_buffer_monitor:
+            Thread(target=self.__buffer_monitor__, args=[self.reader]).start()
+
         if self.multithreading:
             Thread(target=self.madeConnection).start()
         else:
