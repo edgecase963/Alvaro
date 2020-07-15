@@ -17,9 +17,11 @@ After all, time is our most valuable resource.
 ```bash
 
 # clone alvaro
-git clone https://github.com/edgecase963/alvaro
+git clone https://github.com/edgecase963/Alvaro
 
-cd alvaro
+cd Alvaro
+
+pip3 install -r requirements.txt
 
 # install Alvaro
 sudo python3.8 setup.py install
