@@ -6,24 +6,25 @@ import threading
 import alvaro
 
 
-
 def lostConnection():
     print("Connection Lost!")
+
 
 def gotMessage(client, data, metaData):
     data = data.decode()
     print("\nGot Message: {}\n".format(data))
 
+
 def connected():
     print("Connected!")
+
 
 def downloading():
     print("Download started...")
     while cli.downloading:
         dProg = cli.getDownloadProgress()
-        sys.stdout.write("\r{}    ".format( dProg[0]/dProg[1] ))
+        sys.stdout.write("\r{}    ".format(dProg[0] / dProg[1]))
         sys.stdout.flush()
-
 
 
 if __name__ == "__main__":
@@ -35,12 +36,10 @@ if __name__ == "__main__":
     cli.downloadStarted = downloading
 
     target = lambda: asyncio.run(
-        cli.connect("localhost", 8888,
-                    useSSL=False,
-                    sslCert=None,
-                    login=("admin", "test123")
-                    )
+        cli.connect(
+            "localhost", 8888, useSSL=False, sslCert=None, login=("admin", "test123")
         )
+    )
 
     cliThread = threading.Thread(target=target)
     cliThread.start()
