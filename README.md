@@ -32,7 +32,8 @@ sudo python3.8 setup.py install
 
 This project is completely open source and anyone is free to use it.
 
-CodeFactor Rating - [![CodeFactor](https://www.codefactor.io/repository/github/edgecase963/alvaro/badge)](https://www.codefactor.io/repository/github/edgecase963/alvaro)
+CodeFactor Rating
+[![CodeFactor](https://www.codefactor.io/repository/github/edgecase963/alvaro/badge)](https://www.codefactor.io/repository/github/edgecase963/alvaro)
 
 
 Alvaro comes with some built-in features to help make data transfer not just more reliable, but easier to manage and implement into your project. One of these is the ability to monitor an ongoing download.
