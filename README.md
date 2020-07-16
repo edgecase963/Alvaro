@@ -22,6 +22,7 @@ git clone https://github.com/edgecase963/Alvaro
 
 cd Alvaro
 
+# Install requirements
 pip3 install -r requirements.txt
 
 # install Alvaro
