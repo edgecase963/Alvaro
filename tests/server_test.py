@@ -12,8 +12,10 @@ def echoData(client, data, metaData):
         print("Got Data: {}".format(data.decode()))
     client.sendData(data)
 
+
 def newClient(client):
     client.testingSpeed = False
+
 
 def downloading(client):
     print("Download started...\n")
