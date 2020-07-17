@@ -6,7 +6,6 @@ from cryptography.fernet import Fernet
 from threading import Thread
 import cryptography
 import asyncio
-import uvloop
 import json
 import base64
 import time
@@ -14,7 +13,15 @@ import sys
 import ssl
 import os
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ModuleNotFoundError:
+    # uvloop not installed
+    # uvloop is not required for the script to run but it won't be as fast
+    pass
+except Exception as e:
+    print("Error: {}".format(e))
 
 
 def encrypt(plainText, password):
@@ -1124,40 +1131,3 @@ class Client:
                 self.writer.close()
             except Exception as e:
                 print("Error closing stream: {}".format(e))
-
-
-def echoData(client, data, metaData):
-    if data == b"exit":
-        client.disconnect("Exit detected")
-    print("Got Data: {}".format(data.decode()))
-    client.sendData(data)
-
-
-def downloading(client):
-    print("Download started...\n")
-    while client.downloading:
-        dProg = client.getDownloadProgress()
-        sys.stdout.write("\rProgress: {}%    ".format(int(dProg[0] / dProg[1] * 100.0)))
-        sys.stdout.flush()
-    sys.stdout.write("\n")
-    sys.stdout.flush()
-
-
-if __name__ == "__main__":
-    x = Host(
-        "localhost",
-        8888,
-        verbose=True,
-        logging=False,
-        loginRequired=True,
-        multithreading=False,
-    )
-    x.addUser("admin", "test123")
-    x.gotData = echoData
-    x.downloadStarted = downloading
-
-    try:
-        asyncio.run(x.start(useSSL=False, sslCert=None, sslKey=None))
-    except KeyboardInterrupt:
-        print("Ending script...")
-        sys.exit()
