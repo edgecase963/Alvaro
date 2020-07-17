@@ -6,7 +6,6 @@ from cryptography.fernet import Fernet
 from threading import Thread
 import cryptography
 import asyncio
-import uvloop
 import json
 import base64
 import time
@@ -14,8 +13,15 @@ import sys
 import ssl
 import os
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ModuleNotFoundError:
+    # uvloop not installed
+    # uvloop is not required for the script to run but it won't be as fast
+    pass
+except Exception as e:
+    print("Error: {}".format(e))
 
 def encrypt(plainText, password):
     if isinstance(password, str):
