@@ -23,6 +23,7 @@ except ModuleNotFoundError:
 except Exception as e:
     print("Error: {}".format(e))
 
+
 def encrypt(plainText, password):
     if isinstance(password, str):
         password = password.encode()
