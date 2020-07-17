@@ -11,10 +11,12 @@ def lostConnection():
 
 
 def gotMessage(client, data, metaData):
+    if data == b"testing speed":
+        return
     diff = time.time() - float(data)
     speed = int(1.0 / diff)
     client.lst.append(speed)
-    viewThresh = 1000
+    viewThresh = 10000
     if client.encData:
         viewThresh = 10
     shortened_list = client.lst[len(client.lst) - viewThresh :]
@@ -51,6 +53,7 @@ if __name__ == "__main__":
 
     if c and li:
         print("Logged in!")
+        cli.sendData("testing speed")
         cli.lst = []
         cli.sendData(str(time.time()))
     else:
