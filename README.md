@@ -2,6 +2,8 @@
 ---
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Updates](https://pyup.io/repos/github/edgecase963/Alvaro/shield.svg)](https://pyup.io/repos/github/edgecase963/Alvaro/) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
+![Logo](readme_media/logo.png)
+
 Alvaro is an easy to use networking module built to save you time on your projects without compromising on reliability, security or functionality.
 It offers SSL support, user management and many more features to help you on your projects.
 
