@@ -730,16 +730,30 @@ class Host:
 
         return False
 
+    async def __got_msg_length__(self, client, data):
+        if not data[7:].isalnum():
+            return
+        client.next_message_length = int(data[7:])
+        if client.next_message_length < self.default_buffer_limit:
+            client.reader._limit = client.next_message_length
+
+    async def __got_encData_info__(self, client, data):
+        self.log(
+            "{} set encryption to {}".format(
+                client.currentUser.username, data.split(":")[1]
+            )
+        )
+        if data.split(":")[1] == "True":
+            client.encData = True
+        elif data.split(":")[1] == "False":
+            client.encData = False
+
     async def gotRawData(self, client, data):
         if isinstance(data, bytes):
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
-            if not data[7:].isalnum():
-                return
-            client.next_message_length = int(data[7:])
-            if client.next_message_length < self.default_buffer_limit:
-                client.reader._limit = client.next_message_length
+            await self.__got_msg_length__(client, data)
         elif data.startswith("LOGIN:") and "|" in data:
             if len(data.split("|")) == 2:
                 data = data[6:]
@@ -757,15 +771,7 @@ class Host:
                     )
                     client.sendRaw(b"login failed")
         elif data.startswith("encData:"):
-            self.log(
-                "{} set encryption to {}".format(
-                    client.currentUser.username, data.split(":")[1]
-                )
-            )
-            if data.split(":")[1] == "True":
-                client.encData = True
-            elif data.split(":")[1] == "False":
-                client.encData = False
+            await self.__got_encData_info__(client, data)
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
