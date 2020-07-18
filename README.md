@@ -30,6 +30,11 @@ sudo python3 setup.py install
 
 ```
 
+Alternatively, you can also use the pip command to install Alvaro:
+```bash
+pip3 install alvaro
+```
+
 This project is completely open source and anyone is free to use it.
 
 CodeFactor Rating
