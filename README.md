@@ -26,13 +26,14 @@ cd Alvaro
 pip3 install -r requirements.txt
 
 # install Alvaro
-sudo python3.8 setup.py install
+sudo python3 setup.py install
 
 ```
 
 This project is completely open source and anyone is free to use it.
 
 CodeFactor Rating
+
 [![CodeFactor](https://www.codefactor.io/repository/github/edgecase963/alvaro/badge)](https://www.codefactor.io/repository/github/edgecase963/alvaro)
 
 

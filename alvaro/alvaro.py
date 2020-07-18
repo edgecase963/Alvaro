@@ -398,7 +398,9 @@ class Connection:
             return
         if self.server:
             if self.server.loop:
-                self.server.log("Disconnecting {} - {}...".format(self.addr, reason))
+                self.server.log(
+                    "Disconnecting {} - {}...".format(self.addr, reason), "red"
+                )
         self.sendRaw("disconnect")
         try:
             self.writer.close()
@@ -429,6 +431,7 @@ class Host:
         logFile=None,
         loginRequired=False,
         multithreading=True,
+        useTermColors=True,
     ):
         self.running = False
         self.addr = addr
@@ -454,7 +457,7 @@ class Host:
         # If too many login attempts are made within this threshold, the address will be blacklisted
         # 1800 = 30 minutes
 
-        self.blacklistLimit = 6
+        self.blacklistLimit = 5
 
         self.blacklist = {}
         # Structure: { <IP_address>: <time.time() + duration> }
@@ -470,6 +473,23 @@ class Host:
 
         self._save_vars = ["blacklist", "loginAttempts"]
         # A list containing all server variables that will be saved when `self.save_server` is executed
+
+        self.termColors = {
+            "end": "\033[0m",
+            "bold": "\033[1m",
+            "italic": "\033[3m",
+            "underline": "\033[4m",
+            "blinking": "\033[5m",
+            "highlight": "\033[7m",
+            "red": "\033[31m",
+            "green": "\033[32m",
+            "yellow": "\033[33m",
+            "blue": "\033[34m",
+            "white": "\033[37m",
+            "grey_bg": "\033[40m",
+            "red_bg": "\033[41m",
+        }
+        self.useTermColors = useTermColors
 
     def __pack_server_info__(self):
         server_info = {}
@@ -550,26 +570,55 @@ class Host:
             return True
         return False
 
-    async def __add_to_log__(self, text):
+    async def __add_to_log__(self, text, modifier, blinking):
         await self._lock.acquire()
+
+        if modifier:
+            modifier = modifier.lower()
+        if not modifier in self.termColors:
+            modifier = None
+        if not modifier:
+            modifier = "end"
+
         if isinstance(text, bytes):
             text = text.decode()
-        logText = "[{}]\t{}\n".format(time.time(), text)
+        logTime = time.time()
+        logText = "[{}]\t{}\n".format(logTime, text)
+
         if self.logging:
             if not os.path.exists(self.logFile):
                 with open(self.logFile, "wb") as f:
                     pass  # Create the path
             with open(self.logFile, "ab") as f:
                 f.write(logText.encode())
+
         if self.verbose:
-            sys.stdout.write(logText)
+            if self.useTermColors:
+                textMod = self.termColors[modifier]
+                if blinking:
+                    textMod += self.termColors["blinking"]
+                stdoutText = (
+                    self.termColors["bold"]
+                    + "[{}]".format(logTime)
+                    + self.termColors["end"]
+                    + "\t"
+                    + textMod
+                    + str(text)
+                    + self.termColors["end"]
+                    + "\n"
+                )
+            else:
+                stdoutText = logText
+            sys.stdout.write(stdoutText)
             sys.stdout.flush()
         self._lock.release()
 
-    def log(self, text):
+    def log(self, text, modifier=None, blinking=False):
         if not self.loop:
             print("Loop not running - unable to log text")
-        asyncio.run_coroutine_threadsafe(self.__add_to_log__(text), self.loop)
+        asyncio.run_coroutine_threadsafe(
+            self.__add_to_log__(text, modifier, blinking), self.loop
+        )
 
     def gotData(self, client, data, metaData):
         pass
@@ -599,7 +648,9 @@ class Host:
         if not bTime:
             bTime = self.defaultBlacklistTime
         self.blacklist[addr] = time.time() + bTime
-        self.log("Blacklisted {} for {} seconds".format(addr, bTime))
+        self.log(
+            "Blacklisted {} for {} seconds".format(addr, bTime), "red_bg", blinking=True
+        )
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect("Blacklisted")
@@ -629,13 +680,15 @@ class Host:
         except asyncio.LimitOverrunError as e:
             self.log(
                 "ERROR: Buffer limit too small for incoming data ("
-                " asyncio.LimitOverrunError ) - {}:{}".format(client.addr, client.port)
+                " asyncio.LimitOverrunError ) - {}:{}".format(client.addr, client.port),
+                "red_bg",
             )
         except asyncio.exceptions.IncompleteReadError:
             self.log(
                 "asyncio.exceptions.IncompleteReadError - {}:{}".format(
                     client.addr, client.port
-                )
+                ),
+                "red",
             )
         except Exception as e:
             self.log("{} - {}:{}".format(e, client.addr, client.port))
@@ -655,13 +708,18 @@ class Host:
             if len(data.split("|")) == 2:
                 data = data[6:]
                 username, password = data.split("|")
+
                 if username in self.users:
-                    self.log("Login acquired - verifying {}...".format(client.addr))
+                    self.log(
+                        "Login acquired - verifying {}...".format(client.addr), "yellow"
+                    )
                     user = self.users[username]
                     time.sleep(self.loginDelay)
+
                     if user.login(username, password, client):
-                        self.log("{} logged in".format(username))
+                        self.log("{} logged in".format(username), "green")
                         client.sendRaw(b"login accepted", enc=False)
+
                         if self.multithreading:
                             Thread(target=self.loggedIn, args=[client, user]).start()
                         else:
@@ -670,7 +728,8 @@ class Host:
                         self.log(
                             "Failed login attempt - {} - {}:{}".format(
                                 username, client.addr, client.port
-                            )
+                            ),
+                            "red_bg",
                         )
                         self.loginAttempts.append([time.time(), client.addr])
 
@@ -689,7 +748,8 @@ class Host:
                         client.disconnect("Failed login")
                 else:
                     self.log(
-                        "Login Failed - Username '{}' not recognized".format(username)
+                        "Login Failed - Username '{}' not recognized".format(username),
+                        "red",
                     )
                     client.sendRaw(b"login failed")
         elif data.startswith("encData:"):
@@ -711,7 +771,21 @@ class Host:
                     )
                 )
 
-    async def handleClient(self, reader, writer):
+    async def __process_data__(self, client, data):
+        if client.verifiedUser and client.encData:
+            data = client.currentUser.decryptData(data)
+        if data:
+            data, metaData, isRaw = dissectData(data)
+
+            if isRaw:
+                await self.gotRawData(client, data)
+            elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
+                if self.multithreading:
+                    Thread(target=self.gotData, args=[client, data, metaData]).start()
+                else:
+                    self.gotData(client, data, metaData)
+
+    async def __setup_new_client__(self, reader, writer):
         addr, port = writer.get_extra_info("peername")
         client = Connection(addr, port, reader, writer, self)
         self.clients.append(client)
@@ -719,22 +793,28 @@ class Host:
         if self._enable_buffer_monitor:
             Thread(target=self.__buffer_monitor__, args=[client, reader]).start()
 
-        self.log("New Connection: {}:{}".format(client.addr, client.port))
+        self.log("New Connection: {}:{}".format(client.addr, client.port), "green")
 
         if client.addr in self.blacklist:
             if self.blacklist[client.addr] < time.time():
                 self.blacklist.pop(client.addr)
             else:
                 client.disconnect("Blacklisted")
-                return
 
-        if self.loginRequired and not client.verifiedUser:
-            client.sendRaw(b"login required")
+        return client
 
-        if self.multithreading:
-            Thread(target=self.newClient, args=[client]).start()
-        else:
-            self.newClient(client)
+    async def __handle_client__(self, reader, writer):
+
+        client = await self.__setup_new_client__(reader, writer)
+
+        if not client.writer.is_closing():
+            if self.loginRequired and not client.verifiedUser:
+                client.sendRaw(b"login required")
+
+            if self.multithreading:
+                Thread(target=self.newClient, args=[client]).start()
+            else:
+                self.newClient(client)
 
         while self.running and not writer.is_closing():
             if self.loginRequired and not client.verifiedUser:
@@ -747,22 +827,7 @@ class Host:
             if not data:
                 break
 
-            if client.verifiedUser and client.encData:
-                data = client.currentUser.decryptData(data)
-            if data:
-                data, metaData, isRaw = dissectData(data)
-
-                if isRaw:
-                    await self.gotRawData(client, data)
-                elif (
-                    self.loginRequired and client.verifiedUser
-                ) or not self.loginRequired:
-                    if self.multithreading:
-                        Thread(
-                            target=self.gotData, args=[client, data, metaData]
-                        ).start()
-                    else:
-                        self.gotData(client, data, metaData)
+            await self.__process_data__(client, data)
 
         self.log("Lost Connection: {}:{}".format(client.addr, client.port))
         self.clients.remove(client)
@@ -786,44 +851,44 @@ class Host:
         if self.logging:
             if self.logFile is None:
                 self.logFile = "log.txt"
-            self.log("Starting server...")
+        self.log("Starting server...", "blue")
 
         if not os.path.exists(self.userPath):
-            self.log("Creating user directory")
+            self.log("Creating user directory", "blue")
             os.mkdir(self.userPath)
 
         self.loadUsers()
 
         if useSSL and sslCert and sslKey:
-            self.log("Loading SSL certificate...")
+            self.log("Loading SSL certificate...", "blue")
             if os.path.exists(sslCert) and os.path.exists(sslKey):
                 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 ssl_context.load_cert_chain(sslCert, sslKey)
-                self.log("SSL certificate loaded")
+                self.log("SSL certificate loaded", "green")
 
                 server = await asyncio.start_server(
-                    self.handleClient,
+                    self.__handle_client__,
                     self.addr,
                     self.port,
                     ssl=ssl_context,
                     limit=buffer_limit,
                 )
             else:
-                self.log("Unable to load certificate files")
+                self.log("Unable to load certificate files", "red")
                 return
         else:
             server = await asyncio.start_server(
-                self.handleClient, self.addr, self.port, limit=buffer_limit
+                self.__handle_client__, self.addr, self.port, limit=buffer_limit
             )
 
         if server:
-            self.log("Server started")
+            self.log("Server started", "green")
             Thread(target=self.serverStarted, args=[self]).start()
             async with server:
                 await server.serve_forever()
         else:
             self.running = False
-            self.log("Unable to start server")
+            self.log("Unable to start server", "red")
 
 
 class Client:
@@ -976,7 +1041,20 @@ class Client:
     async def logout(self):
         self.sendRaw(b"logout")
 
-    async def handleHost(self):
+    async def __process_data__(self, data):
+        if self.login[1] and self.verifiedUser and self.encData:
+            data = self.decryptData(data)
+        if data:
+            data, metaData, isRaw = dissectData(data)
+            if isRaw:
+                await self.gotRawData(data)
+            else:
+                if self.multithreading:
+                    Thread(target=self.gotData, args=[self, data, metaData]).start()
+                else:
+                    self.gotData(self, data, metaData)
+
+    async def __handle_host__(self):
         if self._enable_buffer_monitor:
             Thread(target=self.__buffer_monitor__, args=[self.reader]).start()
 
@@ -991,21 +1069,11 @@ class Client:
                 self.connected = False
                 break
 
-            if self.login[1] and self.verifiedUser and self.encData:
-                data = self.decryptData(data)
-            if data:
-                data, metaData, isRaw = dissectData(data)
-                if isRaw:
-                    await self.gotRawData(data)
-                else:
-                    if self.multithreading:
-                        Thread(target=self.gotData, args=[self, data, metaData]).start()
-                    else:
-                        self.gotData(self, data, metaData)
+            await self.__process_data__(data)
         self.connected = False
         return self.lostConnection
 
-    async def handleSelf(self):
+    async def __handle_self__(self):
         while self.connected:
             await asyncio.sleep(0.2)
         if not self.connected and self.reader:
@@ -1043,9 +1111,9 @@ class Client:
             self.connection_updated = time.time()
             self.loop = asyncio.get_running_loop()
 
-            future = asyncio.run_coroutine_threadsafe(self.handleSelf(), self.loop)
+            future = asyncio.run_coroutine_threadsafe(self.__handle_self__(), self.loop)
 
-            result = self.loop.call_soon_threadsafe(await self.handleHost())
+            result = self.loop.call_soon_threadsafe(await self.__handle_host__())
         except Exception as e:
             print("Error with connection: {}".format(e))
             self.connected = False
