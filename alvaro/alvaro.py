@@ -694,57 +694,75 @@ class Host:
             self.log("{} - {}:{}".format(e, client.addr, client.port))
         return data.rstrip(self.sepChar)
 
+    async def __got_login_info__(self, client, username, password):
+        self.log("Login acquired - verifying {}...".format(client.addr), "yellow")
+        user = self.users[username]
+        await asyncio.sleep(self.loginDelay)
+
+        if user.login(username, password, client):
+            self.log("{} logged in".format(username), "green")
+            client.sendRaw(b"login accepted", enc=False)
+
+            if self.multithreading:
+                Thread(target=self.loggedIn, args=[client, user]).start()
+            else:
+                self.loggedIn(client, user)
+            return True
+
+        self.log(
+            "Failed login attempt - {} - {}:{}".format(
+                username, client.addr, client.port
+            ),
+            "red_bg",
+        )
+        self.loginAttempts.append([time.time(), client.addr])
+
+        number_of_attempts = len(
+            [
+                i
+                for i in user.loginAttempts
+                if i[0] >= time.time() - self.blacklistThreshold
+            ]
+        )
+
+        if number_of_attempts > self.blacklistLimit:
+            await self.blacklistIP(client.addr)
+
+        return False
+
+    async def __got_msg_length__(self, client, data):
+        if not data[7:].isalnum():
+            return
+        client.next_message_length = int(data[7:])
+        if client.next_message_length < self.default_buffer_limit:
+            client.reader._limit = client.next_message_length
+
+    async def __got_encData_info__(self, client, data):
+        self.log(
+            "{} set encryption to {}".format(
+                client.currentUser.username, data.split(":")[1]
+            )
+        )
+        if data.split(":")[1] == "True":
+            client.encData = True
+        elif data.split(":")[1] == "False":
+            client.encData = False
+
     async def gotRawData(self, client, data):
         if isinstance(data, bytes):
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
-            if not data[7:].isalnum():
-                return
-            client.next_message_length = int(data[7:])
-            if client.next_message_length < self.default_buffer_limit:
-                client.reader._limit = client.next_message_length
+            await self.__got_msg_length__(client, data)
         elif data.startswith("LOGIN:") and "|" in data:
             if len(data.split("|")) == 2:
                 data = data[6:]
                 username, password = data.split("|")
 
                 if username in self.users:
-                    self.log(
-                        "Login acquired - verifying {}...".format(client.addr), "yellow"
-                    )
-                    user = self.users[username]
-                    time.sleep(self.loginDelay)
+                    success = await self.__got_login_info__(client, username, password)
 
-                    if user.login(username, password, client):
-                        self.log("{} logged in".format(username), "green")
-                        client.sendRaw(b"login accepted", enc=False)
-
-                        if self.multithreading:
-                            Thread(target=self.loggedIn, args=[client, user]).start()
-                        else:
-                            self.loggedIn(client, user)
-                    else:
-                        self.log(
-                            "Failed login attempt - {} - {}:{}".format(
-                                username, client.addr, client.port
-                            ),
-                            "red_bg",
-                        )
-                        self.loginAttempts.append([time.time(), client.addr])
-
-                        if (
-                            len(
-                                [
-                                    i
-                                    for i in self.loginAttempts
-                                    if i[0] >= time.time() - self.blacklistThreshold
-                                ]
-                            )
-                            > self.blacklistLimit
-                        ):
-                            await self.blacklistIP(client.addr)
-
+                    if not success:
                         client.disconnect("Failed login")
                 else:
                     self.log(
@@ -753,15 +771,7 @@ class Host:
                     )
                     client.sendRaw(b"login failed")
         elif data.startswith("encData:"):
-            self.log(
-                "{} set encryption to {}".format(
-                    client.currentUser.username, data.split(":")[1]
-                )
-            )
-            if data.split(":")[1] == "True":
-                client.encData = True
-            elif data.split(":")[1] == "False":
-                client.encData = False
+            await self.__got_encData_info__(client, data)
         elif data == "logout":
             if client.verifiedUser and client.currentUser:
                 client.currentUser.logout(client)
