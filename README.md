@@ -47,3 +47,15 @@ CodeFactor Rating
 Alvaro comes with some built-in features to help make data transfer not just more reliable, but easier to manage and implement into your project. One of these is the ability to monitor an ongoing download.
 
 ![Download Demo](demos/download_demo.gif)
+
+
+Below is a demonstration of how to set up a minimalistic server using Alvaro:
+
+```python
+import alvaro, asyncio
+
+server = alvaro.Host("127.0.0.1", port=8888)
+asyncio.run( server.start() )
+```
+
+Alvaro uses asyncio to host/run/manage its servers. In order to start a server, it must be started with the `asyncio.run` function.
