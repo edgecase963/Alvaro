@@ -3,6 +3,9 @@ import time
 import sys
 import asyncio
 import threading
+
+sys.path.insert(1, "../alvaro/")
+
 import alvaro
 
 

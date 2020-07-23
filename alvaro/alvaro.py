@@ -1020,29 +1020,38 @@ class Client:
             print("Error retrieving data: {}".format(e))
         return data.rstrip(self.sepChar)
 
+    async def __got_msg_length__(self, data):
+        if not data[7:].isalnum():
+            return
+        self.next_message_length = int(data[7:])
+        if self.next_message_length < self.default_buffer_limit:
+            self.reader._limit = self.next_message_length
+
+    async def __login_accepted__(self):
+        self.verifiedUser = True
+        if self.multithreading:
+            Thread(target=self.loggedIn).start()
+        else:
+            self.loggedIn()
+
+    async def send_login_info(self):
+        if self.login[0] and self.login[1]:
+            username = self.login[0]
+            password = self.login[1]
+            username = make_bytes(username)
+            password = make_bytes(password)
+            self.sendRaw(b"LOGIN:" + username + b"|" + password)
+
     async def gotRawData(self, data):
         if isinstance(data, bytes):
             data = data.decode()
 
         if data.startswith("msgLen=") and len(data) > 7:
-            if not data[7:].isalnum():
-                return
-            self.next_message_length = int(data[7:])
-            if self.next_message_length < self.default_buffer_limit:
-                self.reader._limit = self.next_message_length
+            await self.__got_msg_length__(data)
         elif data == "login required":
-            if self.login[0] and self.login[1]:
-                username = self.login[0]
-                password = self.login[1]
-                username = make_bytes(username)
-                password = make_bytes(password)
-                self.sendRaw(b"LOGIN:" + username + b"|" + password)
+            await self.send_login_info()
         elif data == "login accepted":
-            self.verifiedUser = True
-            if self.multithreading:
-                Thread(target=self.loggedIn).start()
-            else:
-                self.loggedIn()
+            await self.__login_accepted__()
         elif data == "login failed":
             self._login_failed = True
         elif data == "disconnect":
