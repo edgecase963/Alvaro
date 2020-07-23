@@ -1,6 +1,10 @@
 #!/usr/bin/env python
-import alvaro
 import asyncio
+import sys
+
+sys.path.insert(1, "../alvaro/")
+
+import alvaro
 
 
 def echoData(client, data, metaData):
