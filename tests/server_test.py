@@ -21,6 +21,14 @@ def newClient(client):
     client.testingSpeed = False
 
 
+def lostClient(client):
+    print("Lost connection to {}:{}".format(client.addr, client.port))
+
+
+def userLogin(client, user):
+    print( "{} has logged in as {}".format(client.addr, user.username) )
+
+
 def downloading(client):
     print("Download started...\n")
     while client.downloading:
@@ -44,6 +52,8 @@ if __name__ == "__main__":
     server.gotData = echoData
     server.downloadStarted = downloading
     server.newClient = newClient
+    server.lostClient = lostClient
+    server.loggedIn = userLogin
 
     try:
         asyncio.run(server.start(useSSL=False, sslCert=None, sslKey=None))
