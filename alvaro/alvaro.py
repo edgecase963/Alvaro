@@ -21,8 +21,6 @@ except ModuleNotFoundError:
     # uvloop not installed
     # uvloop is not required for the script to run but it won't be as fast
     pass
-except Exception as e:
-    print("Error: {}".format(e))
 
 
 def encrypt(plainText, password):
