@@ -851,7 +851,7 @@ class Host:
         else:
             self.lostClient(client)
 
-    async def start(self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536):
+    async def start(self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536, ssl_timeout=3):
         self.running = True
         ssl_context = None
         self.loop = asyncio.get_running_loop()
@@ -882,6 +882,7 @@ class Host:
                     self.port,
                     ssl=ssl_context,
                     limit=buffer_limit,
+                    ssl_handshake_timeout=ssl_timeout,
                 )
             else:
                 self.log("Unable to load certificate files", "red")
