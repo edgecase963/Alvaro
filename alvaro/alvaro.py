@@ -336,15 +336,15 @@ class Connection:
 
         self.verifiedUser = False
         self.currentUser = None
-        self.next_message_length = 0
+        self._next_message_length = 0
         self.downloading = False
 
-        self.encData = False
+        self._usr_enc = False
 
     def getDownloadProgress(self):
         if not self.writer.is_closing():
             if self.reader:
-                return len(self.reader._buffer), self.next_message_length
+                return len(self.reader._buffer), self._next_message_length
                 #       <current buffer length>, <target buffer length>
         return 0
 
@@ -352,7 +352,7 @@ class Connection:
         data = make_bytes(data)
         data = prepData(data, metaData=metaData)
 
-        if self.verifiedUser and enc and self.encData:
+        if self.verifiedUser and enc and self._usr_enc:
             data = self.currentUser.encryptData(data)
 
         data = data + self.sepChar
@@ -373,7 +373,7 @@ class Connection:
         try:
             data = make_bytes(data)
 
-            if self.verifiedUser and enc and self.encData:
+            if self.verifiedUser and enc and self._usr_enc:
                 data = self.currentUser.encryptData(data)
 
             data = data + self.sepChar
@@ -731,9 +731,9 @@ class Host:
     async def __got_msg_length__(self, client, data):
         if not data[7:].isalnum():
             return
-        client.next_message_length = int(data[7:])
-        if client.next_message_length < self.default_buffer_limit:
-            client.reader._limit = client.next_message_length
+        client._next_message_length = int(data[7:])
+        if client._next_message_length < self.default_buffer_limit:
+            client.reader._limit = client._next_message_length
 
     async def __got_encData_info__(self, client, data):
         self.log(
@@ -742,9 +742,9 @@ class Host:
             )
         )
         if data.split(":")[1] == "True":
-            client.encData = True
+            client._usr_enc = True
         elif data.split(":")[1] == "False":
-            client.encData = False
+            client._usr_enc = False
 
     async def gotRawData(self, client, data):
         if isinstance(data, bytes):
@@ -780,7 +780,7 @@ class Host:
                 )
 
     async def __process_data__(self, client, data):
-        if client.verifiedUser and client.encData:
+        if client.verifiedUser and client._usr_enc:
             data = client.currentUser.decryptData(data)
         if data:
             data, metaData, isRaw = dissectData(data)
@@ -849,7 +849,9 @@ class Host:
         else:
             self.lostClient(client)
 
-    async def start(self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536, ssl_timeout=3):
+    async def start(
+        self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536, ssl_timeout=3
+    ):
         self.running = True
         ssl_context = None
         self.loop = asyncio.get_running_loop()
@@ -917,7 +919,7 @@ class Client:
         self.loop = None
         self.download_indication_size = 1024 * 10
         self.buffer_update_interval = 0.01
-        self.next_message_length = 0
+        self._next_message_length = 0
         self.default_buffer_limit = 644245094400
         self._enable_buffer_monitor = True
 
@@ -927,11 +929,11 @@ class Client:
         self._login_failed = False
 
         self.verifiedUser = False
-        self.encData = False
+        self._usr_enc = False
 
     def setUserEncrypt(self, newValue):
         async def SET_USER_ENCD(self, newValue):
-            self.encData = newValue
+            self._usr_enc = newValue
 
         if isinstance(newValue, bool) and self.loop:
             sData = "encData:{}".format(str(newValue))
@@ -985,7 +987,7 @@ class Client:
     def getDownloadProgress(self):
         if not self.writer.is_closing():
             if self.reader:
-                return len(self.reader._buffer), self.next_message_length
+                return len(self.reader._buffer), self._next_message_length
                 #       <current buffer length>, <target buffer length>
         return 0
 
@@ -1000,7 +1002,7 @@ class Client:
                 Thread(target=self.downloadStarted).start()
             if not reader._buffer and self.downloading:
                 self.downloading = False
-                self.next_message_length = 0
+                self._next_message_length = 0
                 Thread(target=self.downloadStopped).start()
             time.sleep(self.buffer_update_interval)
 
@@ -1022,9 +1024,9 @@ class Client:
     async def __got_msg_length__(self, data):
         if not data[7:].isalnum():
             return
-        self.next_message_length = int(data[7:])
-        if self.next_message_length < self.default_buffer_limit:
-            self.reader._limit = self.next_message_length
+        self._next_message_length = int(data[7:])
+        if self._next_message_length < self.default_buffer_limit:
+            self.reader._limit = self._next_message_length
 
     async def __login_accepted__(self):
         self.verifiedUser = True
@@ -1060,7 +1062,7 @@ class Client:
         self.sendRaw(b"logout")
 
     async def __process_data__(self, data):
-        if self.login[1] and self.verifiedUser and self.encData:
+        if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.decryptData(data)
         if data:
             data, metaData, isRaw = dissectData(data)
@@ -1145,7 +1147,7 @@ class Client:
             return None
         data = make_bytes(data)
         data = prepData(data, metaData=metaData)
-        if self.login[1] and self.verifiedUser and self.encData:
+        if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.encryptData(data)
         data = data + self.sepChar
         await self.send_raw("msgLen={}".format(str(len(data))))
@@ -1169,7 +1171,7 @@ class Client:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
         data = make_bytes(data)
-        if self.login[1] and self.verifiedUser and self.encData:
+        if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.encryptData(data)
         data = data + self.sepChar
         self.writer.write(data)

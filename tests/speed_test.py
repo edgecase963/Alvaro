@@ -20,7 +20,7 @@ def gotMessage(client, data, metaData):
     speed = int(1.0 / diff)
     client.lst.append(speed)
     viewThresh = 10000
-    if client.encData:
+    if client._usr_enc:
         viewThresh = 10
     shortened_list = client.lst[len(client.lst) - viewThresh :]
     client.lst = shortened_list
