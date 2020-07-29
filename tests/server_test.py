@@ -26,7 +26,7 @@ def lostClient(client):
 
 
 def userLogin(client, user):
-    print( "{} has logged in as {}".format(client.addr, user.username) )
+    print("{} has logged in as {}".format(client.addr, user.username))
 
 
 def downloading(client):
