@@ -2,7 +2,10 @@
 import asyncio
 import sys
 
-sys.path.insert(1, "../alvaro/")
+if sys.platform == "win32":
+    sys.path.insert(1, "..\\alvaro\\")
+elif sys.platform == "linux":
+    sys.path.insert(1, "../alvaro/")
 
 import alvaro
 

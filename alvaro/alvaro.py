@@ -13,6 +13,11 @@ import sys
 import ssl
 import os
 
+if sys.platform == "win32":
+    directory_cutter = "\\"
+elif sys.platform == "linux":
+    directory_cutter = "/"
+
 try:
     import uvloop
 
@@ -253,7 +258,7 @@ class User:
         return savePath
 
     def load(self, filePath):
-        filePath = filePath.rstrip("/")
+        filePath = filePath.rstrip(directory_cutter)
         if not os.path.exists(filePath):
             return
         fileName = os.path.basename(filePath)
@@ -508,10 +513,10 @@ class Host:
         t.start()
 
     def save(self, location, password=None):
-        location = location.rstrip("/")
+        location = location.rstrip(directory_cutter)
         base_name = os.path.basename(location)
         location_directory = location.rstrip(base_name)
-        if os.path.exists(location_directory) or location.count("/") == 0:
+        if os.path.exists(location_directory) or location.count(directory_cutter) == 0:
             if not (location.endswith(".json")):
                 location += ".json"
             with open(location, "w") as f:
