@@ -2,10 +2,10 @@
 import asyncio
 import sys
 
-if sys.platform == "win32":
-    sys.path.insert(1, "..\\alvaro\\")
-elif sys.platform == "linux":
-    sys.path.insert(1, "../alvaro/")
+if sys.platform == "linux":
+    sys.path.append("../alvaro")
+elif sys.platform == "win32":
+    sys.path.append(1, "..\\alvaro\\")
 
 import alvaro
 
@@ -16,7 +16,9 @@ def echoData(client, data, metaData):
     if data == b"exit":
         client.disconnect("Exit detected")
     if not client.testingSpeed:
-        print("Got Data: {}".format(data.decode()))
+        print("Got Data: {}".format(data))
+        if metaData:
+            print("Meta Data: {}".format(metaData))
     client.sendData(data)
 
 
