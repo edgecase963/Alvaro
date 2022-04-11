@@ -17,7 +17,6 @@ def lostConnection():
 
 
 def gotMessage(client, data, metaData):
-    data = data.decode()
     print("\nGot Message: {}\n".format(data))
 
 
@@ -61,7 +60,7 @@ if __name__ == "__main__":
         while cli.connected:
             try:
                 inp = input("")
-                cli.sendData(inp)
+                cli.sendData(inp, metaData={"test": "test"})
             except KeyboardInterrupt:
                 cli.disconnect()
                 break

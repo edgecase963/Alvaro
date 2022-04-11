@@ -4,7 +4,7 @@
 
 ![Logo](readme_media/logo.png)
 
-Alvaro is an easy to use networking module built to save you time on your projects without compromising on reliability, security or functionality.
+Alvaro is a high-level, event-based networking module built to save you time on your projects without compromising on reliability, security or functionality.
 It offers SSL support, user management and many more features to help you on your projects.
 
 ### A quick demo..

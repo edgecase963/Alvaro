@@ -12,6 +12,7 @@ import time
 import sys
 import ssl
 import os
+import pickle
 
 if sys.platform == "win32":
     directory_cutter = "\\"
@@ -134,50 +135,15 @@ def convVarType(var, t):
     return var
 
 
-def unpackMetaStr(metaStr):
-    metaStr = metaStr.decode()
-    metaData = {}
-    while True:
-        if len(metaStr) == 0:
-            break
-        mLen = int(metaStr[:18])
-        metaStr = metaStr[18:]
-        firstVar = metaStr[:mLen]
-        firstVar = convVarType(firstVar[1:], firstVar[0])
-        metaStr = metaStr[mLen:]
-        mLen = int(metaStr[:18])
-        metaStr = metaStr[18:]
-        lastVar = metaStr[:mLen]
-        lastVar = convVarType(lastVar[1:], lastVar[0])
-        metaStr = metaStr[mLen:]
-        metaData[firstVar] = lastVar
-    return metaData
-
-
-def getMetaStr(metaData):
-    metaStr = ""
-    for i in metaData:
-        metaStr += (
-            str(len(str(i)) + 1).zfill(18) + str(i.__class__).split("'")[1][0] + str(i)
-        )
-        metaStr += (
-            str(len(str(metaData[i])) + 1).zfill(18)
-            + str(metaData[i].__class__).split("'")[1][0]
-            + str(metaData[i])
-        )
-    return metaStr.encode()
-
-
 def prepData(data, metaData=None):
     # Prepares the data to be sent
     # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
     # (ignore spaces)
-    if isinstance(data, str):
-        data = data.encode()
+    data = pickle.dumps(data)
     pData = ""
     pData = b"DATA:|" + str(len(data)).encode().zfill(18) + data
     if metaData:
-        pData = pData + b"META:|" + getMetaStr(metaData)
+        pData = pData + b"META:|" + pickle.dumps(metaData)
     return pData
 
 
@@ -190,11 +156,12 @@ def dissectData(data):
         dataLen = int(data[:18])  # Extract length of data
         data = data[18:]  # Remove the data length
         rawData = data[:dataLen]  # Get the raw data
+        rawData = pickle.loads(rawData)  # Decode the data
         metaStr = data[dataLen:]  # Get the meta-data (if any)
         if metaStr != "":
             if metaStr.startswith(b"META:|"):  # Received Meta-Data
                 metaStr = metaStr.lstrip(b"META:|")  # Remove "META:|"
-                metaData = unpackMetaStr(metaStr)  # Convert Meta-Data to dictionary
+                metaData = pickle.loads(metaStr)
     else:
         return data, None, True
     return rawData, metaData, False
@@ -354,7 +321,6 @@ class Connection:
         return 0
 
     async def send_data(self, data, metaData=None, enc=True):
-        data = make_bytes(data)
         data = prepData(data, metaData=metaData)
 
         if self.verifiedUser and enc and self._usr_enc:
@@ -372,7 +338,8 @@ class Connection:
                     self.send_data(data, metaData=metaData, enc=enc), self.server.loop
                 )
             except Exception as e:
-                print("Error sending data: {}".format(e))
+                print("Error sending data")
+                raise e
 
     async def send_raw(self, data, enc=True):
         try:
@@ -394,7 +361,8 @@ class Connection:
                     self.send_raw(data, enc=enc), self.server.loop
                 )
             except Exception as e:
-                print("Error sending data: {}".format(e))
+                print("Error sending data")
+                raise e
 
     def disconnect(self, reason=None):
         if self.writer.is_closing():
@@ -408,7 +376,8 @@ class Connection:
         try:
             self.writer.close()
         except Exception as e:
-            print("Error closing stream: {}".format(e))
+            print("Error closing stream")
+            raise e
         self.logout()
 
     def blacklist(self, bTime=600):
@@ -526,7 +495,7 @@ class Host:
                     password = password.encode()
                 encryptFile(location, password)
 
-    def load(self, location, password=None, wait=False):
+    def load(self, location, password=None):
         if os.path.exists(location):
             if os.path.isfile(location):
                 if password:
@@ -695,6 +664,7 @@ class Host:
             )
         except Exception as e:
             self.log("{} - {}:{}".format(e, client.addr, client.port))
+            raise e
         return data.rstrip(self.sepChar)
 
     async def __got_login_info__(self, client, username, password):
@@ -847,7 +817,8 @@ class Host:
         try:
             writer.close()
         except Exception as e:
-            print("Error closing stream: {}".format(e))
+            print("Error closing stream")
+            raise e
         client.logout()
         if self.multithreading:
             Thread(target=self.lostClient, args=[client]).start()
@@ -910,15 +881,13 @@ class Host:
 class Client:
     sepChar = b"\n\t_SEPARATOR_\t\n"
 
-    def __init__(self, multithreading=False):
+    def __init__(self, multithreading=False, pickleData=False):
         self.connected = False
         self.reader = None
         self.writer = None
         self.hostAddr = None
         self.hostPort = None
-        self.connection_updated = (
-            time.time()
-        )  # Last time the connection status was changed
+        self.connection_updated = time.time()  # Last time the connection status was changed
         self.login = (None, None)
         self.multithreading = multithreading
         self.loop = None
@@ -927,6 +896,7 @@ class Client:
         self._next_message_length = 0
         self.default_buffer_limit = 644245094400
         self._enable_buffer_monitor = True
+        self.pickleData = pickleData
 
         self.downloading = False
 
@@ -1023,7 +993,8 @@ class Client:
         except asyncio.exceptions.IncompleteReadError:
             print("asyncio.exceptions.IncompleteReadError")
         except Exception as e:
-            print("Error retrieving data: {}".format(e))
+            print("Error retrieving data")
+            raise e
         return data.rstrip(self.sepChar)
 
     async def __got_msg_length__(self, data):
@@ -1140,9 +1111,10 @@ class Client:
 
             result = self.loop.call_soon_threadsafe(await self.__handle_host__())
         except Exception as e:
-            print("Error with connection: {}".format(e))
+            print("Error with connection")
             self.connected = False
             self.connection_updated = time.time()
+            raise e
         self.connected = False
         self.connection_updated = time.time()
 
@@ -1150,10 +1122,12 @@ class Client:
         if not self.connected:
             print("ERROR: Event loop not connected. Unable to send data")
             return None
-        data = make_bytes(data)
+
         data = prepData(data, metaData=metaData)
+
         if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.encryptData(data)
+
         data = data + self.sepChar
         await self.send_raw("msgLen={}".format(str(len(data))))
         self.writer.write(data)
@@ -1166,7 +1140,7 @@ class Client:
                     self.send_data(data, metaData=metaData), self.loop
                 )
             except Exception as e:
-                print("Error sending data: {}".format(e))
+                print("Error sending data")
                 self.disconnect()
         else:
             self.disconnect()
@@ -1187,8 +1161,9 @@ class Client:
             try:
                 asyncio.run_coroutine_threadsafe(self.send_raw(data), self.loop)
             except Exception as e:
-                print("Error sending data: {}".format(e))
+                print("Error sending data")
                 self.disconnect()
+                raise e
         else:
             self.disconnect()
 
