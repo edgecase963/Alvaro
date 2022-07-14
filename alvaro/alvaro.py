@@ -12,7 +12,6 @@ import time
 import sys
 import ssl
 import os
-import pickle
 
 if sys.platform == "win32":
     directory_cutter = "\\"
@@ -139,11 +138,11 @@ def prepData(data, metaData=None):
     # Prepares the data to be sent
     # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
     # (ignore spaces)
-    data = pickle.dumps(data)
+    data = make_bytes(json.dumps(data))
     pData = ""
     pData = b"DATA:|" + str(len(data)).encode().zfill(18) + data
     if metaData:
-        pData = pData + b"META:|" + pickle.dumps(metaData)
+        pData = pData + b"META:|" + make_bytes(json.dumps(metaData))
     return pData
 
 
@@ -156,12 +155,12 @@ def dissectData(data):
         dataLen = int(data[:18])  # Extract length of data
         data = data[18:]  # Remove the data length
         rawData = data[:dataLen]  # Get the raw data
-        rawData = pickle.loads(rawData)  # Decode the data
+        rawData = json.loads(rawData)  # Decode the data
         metaStr = data[dataLen:]  # Get the meta-data (if any)
         if metaStr != "":
             if metaStr.startswith(b"META:|"):  # Received Meta-Data
                 metaStr = metaStr.lstrip(b"META:|")  # Remove "META:|"
-                metaData = pickle.loads(metaStr)
+                metaData = json.loads(metaStr)
     else:
         return data, None, True
     return rawData, metaData, False
@@ -881,7 +880,7 @@ class Host:
 class Client:
     sepChar = b"\n\t_SEPARATOR_\t\n"
 
-    def __init__(self, multithreading=False, pickleData=False):
+    def __init__(self, multithreading=False):
         self.connected = False
         self.reader = None
         self.writer = None
@@ -896,7 +895,6 @@ class Client:
         self._next_message_length = 0
         self.default_buffer_limit = 644245094400
         self._enable_buffer_monitor = True
-        self.pickleData = pickleData
 
         self.downloading = False
 
