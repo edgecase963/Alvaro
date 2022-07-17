@@ -511,7 +511,10 @@ class Host:
                     if sVar in self.__dict__ and sVar in server_info:
                         self.__dict__[sVar] = server_info[sVar]
 
-    def loadUsers(self):
+    def loadUsers(self, customPath=None):
+        if customPath is not None:
+            self.userPath = customPath
+        
         self.log("Loading users...")
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
@@ -520,7 +523,10 @@ class Host:
                 self.users[user.username] = user
         self.log("Users loaded")
 
-    def saveUsers(self):
+    def saveUsers(self, customPath=None):
+        if customPath is not None:
+            self.userPath = customPath
+        
         self.log("Saving users...")
         for username in self.users:
             savePath = self.users[username].save(self.userPath)
