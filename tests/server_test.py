@@ -11,9 +11,9 @@ import alvaro
 
 
 def echoData(client, data, metaData):
-    if data == b"testing speed":
+    if data == "testing speed":
         client.testingSpeed = True
-    if data == b"exit":
+    if data == "exit":
         client.disconnect("Exit detected")
     if not client.testingSpeed:
         print("Got Data: {}".format(data))
