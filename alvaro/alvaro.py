@@ -462,7 +462,7 @@ class Host:
         }
         self.useTermColors = useTermColors
 
-    def __pack_server_info__(self):
+    def _pack_server_info(self):
         server_info = {}
         for sVar in self._save_vars:
             if sVar in self.__dict__:
@@ -488,7 +488,7 @@ class Host:
             if not (location.endswith(".json")):
                 location += ".json"
             with open(location, "w") as f:
-                json.dump(self.__pack_server_info__(), f)
+                json.dump(self._pack_server_info(), f)
             if password:
                 if isinstance(password, str):
                     password = password.encode()
