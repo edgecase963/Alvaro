@@ -12,7 +12,6 @@ import time
 import sys
 import ssl
 import os
-import pickle
 
 if sys.platform == "win32":
     directory_cutter = "\\"
@@ -139,11 +138,11 @@ def prepData(data, metaData=None):
     # Prepares the data to be sent
     # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
     # (ignore spaces)
-    data = pickle.dumps(data)
+    data = make_bytes(json.dumps(data))
     pData = ""
     pData = b"DATA:|" + str(len(data)).encode().zfill(18) + data
     if metaData:
-        pData = pData + b"META:|" + pickle.dumps(metaData)
+        pData = pData + b"META:|" + make_bytes(json.dumps(metaData))
     return pData
 
 
@@ -156,12 +155,12 @@ def dissectData(data):
         dataLen = int(data[:18])  # Extract length of data
         data = data[18:]  # Remove the data length
         rawData = data[:dataLen]  # Get the raw data
-        rawData = pickle.loads(rawData)  # Decode the data
+        rawData = json.loads(rawData)  # Decode the data
         metaStr = data[dataLen:]  # Get the meta-data (if any)
         if metaStr != "":
             if metaStr.startswith(b"META:|"):  # Received Meta-Data
                 metaStr = metaStr.lstrip(b"META:|")  # Remove "META:|"
-                metaData = pickle.loads(metaStr)
+                metaData = json.loads(metaStr)
     else:
         return data, None, True
     return rawData, metaData, False
@@ -512,7 +511,10 @@ class Host:
                     if sVar in self.__dict__ and sVar in server_info:
                         self.__dict__[sVar] = server_info[sVar]
 
-    def loadUsers(self):
+    def loadUsers(self, customPath=None):
+        if customPath is not None:
+            self.userPath = customPath
+        
         self.log("Loading users...")
         for i in os.listdir(self.userPath):
             iPath = os.path.join(self.userPath, i)
@@ -521,7 +523,10 @@ class Host:
                 self.users[user.username] = user
         self.log("Users loaded")
 
-    def saveUsers(self):
+    def saveUsers(self, customPath=None):
+        if customPath is not None:
+            self.userPath = customPath
+        
         self.log("Saving users...")
         for username in self.users:
             savePath = self.users[username].save(self.userPath)
