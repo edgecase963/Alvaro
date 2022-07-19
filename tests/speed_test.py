@@ -17,7 +17,7 @@ def lostConnection():
 
 
 def gotMessage(client, data, metaData):
-    if data == b"testing speed":
+    if data == "testing speed":
         return
     diff = time.time() - float(data)
     speed = int(1.0 / diff)

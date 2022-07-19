@@ -60,7 +60,7 @@ if __name__ == "__main__":
         while cli.connected:
             try:
                 inp = input("")
-                cli.sendData(inp, metaData={"test": "test"})
+                cli.sendData(inp, metaData={"Timestamp": str(time.time())})
             except KeyboardInterrupt:
                 cli.disconnect()
                 break
