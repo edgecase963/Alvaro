@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+from dataclasses import dataclass
+from click import password_option
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.fernet import Fernet
 from threading import Thread
+import datetime
 import cryptography
 import asyncio
 import json
@@ -166,6 +169,50 @@ def dissectData(data):
     return rawData, metaData, False
 
 
+@dataclass
+class Login_Attempt():
+    timestamp: float
+    username: str
+    address: str
+    
+    def to_datetime(self):
+        return datetime.datetime.fromtimestamp(self.timestamp)
+    
+    def to_string(self):
+        return "{} - {} - {}".format(self.to_datetime(), self.username, self.address)
+    
+    def to_json(self):
+        return {
+            "timestamp": self.timestamp,
+            "username": self.username,
+            "address": self.address
+        }
+    
+    def from_json(self, data):
+        self.timestamp = data["timestamp"]
+        self.username = data["username"]
+        self.address = data["address"]
+        return self
+    
+    def __eq__(self, other):
+        return self.timestamp == other.timestamp and self.username == other.username and self.address == other.address
+    
+    def __hash__(self):
+        return hash(self.timestamp) ^ hash(self.username) ^ hash(self.address)
+    
+    def __lt__(self, other):
+        return self.timestamp < other.timestamp
+    
+    def __le__(self, other):
+        return self.timestamp <= other.timestamp
+    
+    def __gt__(self, other):
+        return self.timestamp > other.timestamp
+    
+    def __ge__(self, other):
+        return self.timestamp >= other.timestamp
+
+
 class User:
     def __init__(self, username):
         self.username = username
@@ -180,8 +227,6 @@ class User:
         #                         Login 1                        Login 2
 
         self.loginAttempts = []
-        # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
-        #                        Attempt 1                      Attempt 2
 
     def encryptData(self, data):
         if self.hasPassword and self.password:
@@ -207,7 +252,7 @@ class User:
             "username": self.username,
             "hasPassword": self.hasPassword,
             "loginHistory": self.loginHistory,
-            "loginAttempts": self.loginAttempts,
+            "loginAttempts": [attempt.to_json() for attempt in self.loginAttempts],
         }
 
         if self._cipher_pass and self.hasPassword:
@@ -246,7 +291,7 @@ class User:
             self.username = user_info["username"]
             self.hasPassword = user_info["hasPassword"]
             self.loginHistory = user_info["loginHistory"]
-            self.loginAttempts = user_info["loginAttempts"]
+            self.loginAttempts = [Login_Attempt().from_json(attempt) for attempt in user_info["loginAttempts"]]
             return self
 
     def verify(self, password):
@@ -272,7 +317,8 @@ class User:
             connection.verifiedUser = True
             connection.currentUser = self
             return True
-        self.loginAttempts.append([time.time(), connection.addr])
+        new_login_attempt = Login_Attempt(time.time(), username, connection.addr)
+        self.loginAttempts.append(new_login_attempt)
         return False
 
     def logout(self, client):
@@ -421,8 +467,6 @@ class Host:
         self._enable_buffer_monitor = True
 
         self.loginAttempts = []
-        # Structure: # Structure: [ [<time.time()>, <IP_Address>], [<time.time()>, <IP_Address>] ]
-        #                                     Attempt 1                      Attempt 2
 
         self.blacklistThreshold = 1800  # (In seconds)
         # If too many login attempts are made within this threshold, the address will be blacklisted
@@ -479,6 +523,33 @@ class Host:
         new_loop = asyncio.new_event_loop()
         t = Thread(target=self._start_loop, args=(new_loop, task, finishFunc))
         t.start()
+
+    def get_login_attempts(self, username=None, address=None, start_date=None, end_date=None):
+        attempts = self.loginAttempts[:]
+
+        # Change start_date and end_date to float timestamps if possible
+        if isinstance(start_date, datetime.datetime):
+            start_date = start_date.timestamp()
+        if isinstance(end_date, datetime.datetime):
+            end_date = end_date.timestamp()
+        
+        if username is not None:
+            # Filter out all attempts that do not match the username
+            attempts = [a for a in attempts if a.username == username]
+        
+        if address is not None:
+            # Filter out all attempts that do not match the address
+            attempts = [a for a in attempts if a.address == address]
+        
+        if start_date is not None:
+            # Filter out all login attempts before the start date
+            attempts = [a for a in attempts if a.timestamp >= start_date]
+        
+        if end_date is not None:
+            # Filter out all login attempts after the end date
+            attempts = [a for a in attempts if a.timestamp <= end_date]
+        
+        return self.loginAttempts
 
     def save(self, location, password=None):
         location = location.rstrip(directory_cutter)
@@ -693,14 +764,14 @@ class Host:
             ),
             "red_bg",
         )
-        self.loginAttempts.append([time.time(), client.addr])
+        new_login_attempt = Login_Attempt(time.time(), username, client.addr)
+        self.loginAttempts.append(new_login_attempt)
 
         number_of_attempts = len(
-            [
-                i
-                for i in user.loginAttempts
-                if i[0] >= time.time() - self.blacklistThreshold
-            ]
+            self.get_login_attempts(
+                address = client.addr,
+                start_date = time.time() - self.blacklistThreshold,
+            )
         )
 
         if number_of_attempts > self.blacklistLimit:
