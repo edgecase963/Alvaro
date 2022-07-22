@@ -211,6 +211,12 @@ class Login_Attempt():
     
     def __ge__(self, other):
         return self.timestamp >= other.timestamp
+    
+    def __ne__(self, other):
+        return self.timestamp != other.timestamp or self.username != other.username or self.address != other.address
+    
+    def __str__(self):
+        return self.to_string()
 
 
 class User:
