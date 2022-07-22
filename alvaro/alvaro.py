@@ -297,7 +297,7 @@ class User:
             self.username = user_info["username"]
             self.hasPassword = user_info["hasPassword"]
             self.loginHistory = user_info["loginHistory"]
-            self.loginAttempts = [Login_Attempt().from_json(attempt) for attempt in user_info["loginAttempts"]]
+            self.loginAttempts = [Login_Attempt(**attempt) for attempt in user_info["loginAttempts"]]
             return self
 
     def verify(self, password):
@@ -516,7 +516,10 @@ class Host:
         server_info = {}
         for sVar in self._save_vars:
             if sVar in self.__dict__:
-                server_info[sVar] = self.__dict__[sVar]
+                if sVar == "loginAttempts":
+                    server_info[sVar] = [attempt.to_json() for attempt in self.loginAttempts]
+                else:
+                    server_info[sVar] = self.__dict__[sVar]
         return server_info
 
     def _start_loop(self, loop, task, finishFunc):
@@ -561,6 +564,7 @@ class Host:
         location = location.rstrip(directory_cutter)
         base_name = os.path.basename(location)
         location_directory = location.rstrip(base_name)
+        
         if os.path.exists(location_directory) or location.count(directory_cutter) == 0:
             if not (location.endswith(".json")):
                 location += ".json"
@@ -579,14 +583,19 @@ class Host:
                         password = password.encode()
                     if isinstance(password, bytes):
                         decryptFile(location, password)
+                
                 with open(location, "rb") as f:
                     server_info = json.load(f)
+                
                 if password:
                     if isinstance(password, bytes):
                         encryptFile(location, password)
                 for sVar in self._save_vars:
                     if sVar in self.__dict__ and sVar in server_info:
-                        self.__dict__[sVar] = server_info[sVar]
+                        if sVar == "loginAttempts":
+                            self.loginAttempts = [Login_Attempt(**attempt) for attempt in server_info[sVar]]
+                        else:
+                            self.__dict__[sVar] = server_info[sVar]
 
     def loadUsers(self, customPath=None):
         if customPath is not None:
