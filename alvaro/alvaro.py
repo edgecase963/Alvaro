@@ -141,10 +141,12 @@ def prepData(data, metaData=None):
     # Prepares the data to be sent
     # Structure: DATA:| <data_length>.zfill(18) <raw-data> META:| <meta-string>
     # (ignore spaces)
+    # Keep in mind that `json.dumps` does not allow for set variables
     data = make_bytes(json.dumps(data))
     pData = ""
     pData = b"DATA:|" + str(len(data)).encode().zfill(18) + data
     if metaData:
+        # Keep in mind that `json.dumps` does not allow for set variables
         pData = pData + b"META:|" + make_bytes(json.dumps(metaData))
     return pData
 
