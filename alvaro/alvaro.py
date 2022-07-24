@@ -473,6 +473,7 @@ class Host:
         self.buffer_update_interval = 0.01
         self.default_buffer_limit = 644245094400
         self._enable_buffer_monitor = True
+        self._server = None
 
         self.loginAttempts = []
 
@@ -685,28 +686,22 @@ class Host:
             self._add_to_log(text, modifier, blinking), self.loop
         )
 
-    def gotData(self, client, data, metaData):
+    # Interchangeable Functions - All Asynchronous starting v1.2.0
+    async def gotData(self, client, data, metaData):
         pass
-
-    def lostClient(self, client):
+    async def lostClient(self, client):
         pass
-
-    def newClient(self, client):
+    async def newClient(self, client):
         pass
-
-    def blacklisted(self, addr):
+    async def blacklisted(self, addr):
         pass
-
-    def loggedIn(self, client, user):
+    async def loggedIn(self, client, user):
         pass
-
-    def downloadStarted(self, client):
+    async def downloadStarted(self, client):
         pass
-
-    def downloadStopped(self, client):
+    async def downloadStopped(self, client):
         pass
-
-    def serverStarted(self, server):
+    async def serverStarted(self, server):
         pass
 
     async def blacklistIP(self, addr, bTime=None):
@@ -720,9 +715,9 @@ class Host:
             if client.addr == addr:
                 client.disconnect("Blacklisted")
         if self.multithreading:
-            Thread(target=self.blacklisted, args=[addr]).start()
+            self.newLoop(lambda: self.blacklisted(addr))
         else:
-            self.blacklisted(addr)
+            await self.blacklisted(addr)
 
     def _buffer_monitor(self, client, reader):
         client.downloading = False
@@ -732,10 +727,10 @@ class Host:
                 and not client.downloading
             ):
                 client.downloading = True
-                Thread(target=self.downloadStarted, args=[client]).start()
+                self.newLoop(lambda: self.downloadStarted(client))
             if not reader._buffer and client.downloading:
                 client.downloading = False
-                Thread(target=self.downloadStopped, args=[client]).start()
+                self.newLoop(lambda: self.downloadStopped(client))
             time.sleep(self.buffer_update_interval)
 
     async def getData(self, client, reader):
@@ -770,9 +765,9 @@ class Host:
             client.sendRaw(b"login accepted", enc=False)
 
             if self.multithreading:
-                Thread(target=self.loggedIn, args=[client, user]).start()
+                self.newLoop(lambda: self.loggedIn(client, user))
             else:
-                self.loggedIn(client, user)
+                await self.loggedIn(client, user)
             return True
 
         self.log(
@@ -857,9 +852,9 @@ class Host:
                 await self.gotRawData(client, data)
             elif (self.loginRequired and client.verifiedUser) or not self.loginRequired:
                 if self.multithreading:
-                    Thread(target=self.gotData, args=[client, data, metaData]).start()
+                    self.newLoop(lambda: self.gotData(client, data, metaData))
                 else:
-                    self.gotData(client, data, metaData)
+                    await self.gotData(client, data, metaData)
 
     async def _setup_new_client(self, reader, writer):
         addr, port = writer.get_extra_info("peername")
@@ -880,7 +875,6 @@ class Host:
         return client
 
     async def _handle_client(self, reader, writer):
-
         client = await self._setup_new_client(reader, writer)
 
         if not client.writer.is_closing():
@@ -888,9 +882,9 @@ class Host:
                 client.sendRaw(b"login required")
 
             if self.multithreading:
-                Thread(target=self.newClient, args=[client]).start()
+                self.newLoop(lambda: self.newClient(client))
             else:
-                self.newClient(client)
+                await self.newClient(client)
 
         while self.running and not writer.is_closing():
             if self.loginRequired and not client.verifiedUser:
@@ -914,9 +908,9 @@ class Host:
             raise e
         client.logout()
         if self.multithreading:
-            Thread(target=self.lostClient, args=[client]).start()
+            self.newLoop(lambda: self.lostClient(client))
         else:
-            self.lostClient(client)
+            await self.lostClient(client)
 
     async def start(
         self, useSSL=False, sslCert=None, sslKey=None, buffer_limit=65536, ssl_timeout=3
@@ -925,7 +919,7 @@ class Host:
         ssl_context = None
         self.loop = asyncio.get_running_loop()
 
-        server = None
+        self._server = None
 
         if self.logging:
             if self.logFile is None:
@@ -945,7 +939,7 @@ class Host:
                 ssl_context.load_cert_chain(sslCert, sslKey)
                 self.log("SSL certificate loaded", "green")
 
-                server = await asyncio.start_server(
+                self._server = await asyncio.start_server(
                     self._handle_client,
                     self.addr,
                     self.port,
@@ -957,15 +951,15 @@ class Host:
                 self.log("Unable to load certificate files", "red")
                 return
         else:
-            server = await asyncio.start_server(
+            self._server = await asyncio.start_server(
                 self._handle_client, self.addr, self.port, limit=buffer_limit
             )
 
-        if server:
+        if self._server:
             self.log("Server started", "green")
-            Thread(target=self.serverStarted, args=[self]).start()
-            async with server:
-                await server.serve_forever()
+            self.newLoop(lambda: self.serverStarted(self))
+            async with self._server:
+                await self._server.serve_forever()
         else:
             self.running = False
             self.log("Unable to start server", "red")
