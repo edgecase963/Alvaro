@@ -10,7 +10,7 @@ elif sys.platform == "win32":
 import alvaro
 
 
-def echoData(client, data, metaData):
+async def echoData(client, data, metaData):
     if data == "testing speed":
         client.testingSpeed = True
     if data == "exit":
@@ -22,19 +22,19 @@ def echoData(client, data, metaData):
     client.sendData(data)
 
 
-def newClient(client):
+async def newClient(client):
     client.testingSpeed = False
 
 
-def lostClient(client):
+async def lostClient(client):
     print("Lost connection to {}:{}".format(client.addr, client.port))
 
 
-def userLogin(client, user):
+async def userLogin(client, user):
     print("{} has logged in as {}".format(client.addr, user.username))
 
 
-def downloading(client):
+async def downloading(client):
     print("Download started...\n")
     while client.downloading:
         dProg = client.getDownloadProgress()
@@ -51,10 +51,10 @@ if __name__ == "__main__":
         verbose=True,
         logging=False,
         loginRequired=True,
-        multithreading=False,
+        multithreading=True,
     )
     server.addUser("admin", "test123")
-    server.gotData = echoData
+    server.gotData = lambda client, data, meta: echoData(client, data, meta)
     server.downloadStarted = downloading
     server.newClient = newClient
     server.lostClient = lostClient
