@@ -964,6 +964,15 @@ class Host:
             self.running = False
             self.log("Unable to start server", "red")
 
+    def stop(self):
+        self.running = False
+        self.log("Stopping server...", "blue")
+        if self._server:
+            self._server.close()
+            self.log("Server stopped", "green")
+        else:
+            self.log("Server not running", "red")
+
 
 class Client:
     sepChar = b"\n\t_SEPARATOR_\t\n"
