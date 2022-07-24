@@ -12,19 +12,19 @@ elif sys.platform == "linux":
 import alvaro
 
 
-def lostConnection():
+async def lostConnection():
     print("Connection Lost!")
 
 
-def gotMessage(client, data, metaData):
+async def gotMessage(data, metaData):
     print("\nGot Message: {}\n".format(data))
 
 
-def connected():
+async def connected():
     print("Connected!")
 
 
-def downloading():
+async def downloading():
     print("Download started...")
     while cli.downloading:
         dProg = cli.getDownloadProgress()
