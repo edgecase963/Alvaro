@@ -964,6 +964,15 @@ class Host:
             self.running = False
             self.log("Unable to start server", "red")
 
+    def stop(self):
+        self.running = False
+        self.log("Stopping server...", "blue")
+        if self._server:
+            self._server.close()
+            self.log("Server stopped", "green")
+        else:
+            self.log("Server not running", "red")
+
 
 class Client:
     sepChar = b"\n\t_SEPARATOR_\t\n"
@@ -1027,22 +1036,17 @@ class Client:
             return data
         return data
 
-    def gotData(self, data, metaData):
+    async def gotData(self, data, metaData):
         pass
-
-    def lostConnection(self):
+    async def lostConnection(self):
         pass
-
-    def madeConnection(self):
+    async def madeConnection(self):
         pass
-
-    def loggedIn(self):
+    async def loggedIn(self):
         pass
-
-    def downloadStarted(self):
+    async def downloadStarted(self):
         pass
-
-    def downloadStopped(self):
+    async def downloadStopped(self):
         pass
 
     def getDownloadProgress(self):
@@ -1060,11 +1064,11 @@ class Client:
                 and not self.downloading
             ):
                 self.downloading = True
-                Thread(target=self.downloadStarted).start()
+                self.newLoop(self.downloadStarted)
             if not reader._buffer and self.downloading:
                 self.downloading = False
                 self._next_message_length = 0
-                Thread(target=self.downloadStopped).start()
+                self.newLoop(self.downloadStopped)
             time.sleep(self.buffer_update_interval)
 
     async def getData(self, reader, writer):
@@ -1093,9 +1097,9 @@ class Client:
     async def _login_accepted(self):
         self.verifiedUser = True
         if self.multithreading:
-            Thread(target=self.loggedIn).start()
+            self.newLoop(self.loggedIn)
         else:
-            self.loggedIn()
+            await self.loggedIn()
 
     async def send_login_info(self):
         if self.login[0] and self.login[1]:
@@ -1132,18 +1136,18 @@ class Client:
                 await self.gotRawData(data)
             else:
                 if self.multithreading:
-                    Thread(target=self.gotData, args=[self, data, metaData]).start()
+                    self.newLoop(lambda: self.gotData(data, metaData))
                 else:
-                    self.gotData(self, data, metaData)
+                    await self.gotData(data, metaData)
 
     async def _handle_host(self):
         if self._enable_buffer_monitor:
             Thread(target=self._buffer_monitor, args=[self.reader]).start()
 
         if self.multithreading:
-            Thread(target=self.madeConnection).start()
+            self.newLoop(self.madeConnection)
         else:
-            self.madeConnection()
+            await self.madeConnection()
 
         while self.connected and self.reader and not self.writer.is_closing():
             data = await self.getData(self.reader, self.writer)
@@ -1153,7 +1157,6 @@ class Client:
 
             await self._process_data(data)
         self.connected = False
-        return self.lostConnection
 
     async def _handle_self(self):
         while self.connected:
@@ -1195,7 +1198,8 @@ class Client:
 
             future = asyncio.run_coroutine_threadsafe(self._handle_self(), self.loop)
 
-            result = self.loop.call_soon_threadsafe(await self._handle_host())
+            await self._handle_host()
+            await self.lostConnection()
         except Exception as e:
             print("Error with connection")
             self.connected = False

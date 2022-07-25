@@ -18,7 +18,7 @@ URL = 'https://github.com/edgecase963/Alvaro'
 EMAIL = 'edgecase963@gmail.com'
 AUTHOR = 'edgecase963'
 REQUIRES_PYTHON = '>=3.8.0'
-VERSION = '1.2.0'
+VERSION = '1.2.1'
 
 # What packages are required for this module to be executed?
 REQUIRED = []
