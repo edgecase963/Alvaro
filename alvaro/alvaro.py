@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from dataclasses import dataclass
-from click import password_option
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -348,7 +347,7 @@ class User:
 
 
 class Connection:
-    sepChar = b"\n\t_SEPARATOR_\t\n"
+    delimiter = b"\n\t_SEPARATOR_\t\n"
 
     def __init__(self, addr, port, reader, writer, server):
         self.connectionTime = time.time()
@@ -379,7 +378,7 @@ class Connection:
         if self.verifiedUser and enc and self._usr_enc:
             data = self.currentUser.encryptData(data)
 
-        data = data + self.sepChar
+        data = data + self.delimiter
         await self.send_raw("msgLen={}".format(str(len(data))))
         self.writer.write(data)
         await self.writer.drain()
@@ -401,7 +400,7 @@ class Connection:
             if self.verifiedUser and enc and self._usr_enc:
                 data = self.currentUser.encryptData(data)
 
-            data = data + self.sepChar
+            data = data + self.delimiter
             self.writer.write(data)
             await self.writer.drain()
         except ConnectionResetError:
@@ -445,7 +444,7 @@ class Connection:
 
 
 class Host:
-    sepChar = b"\n\t_SEPARATOR_\t\n"
+    delimiter = b"\n\t_SEPARATOR_\t\n"
 
     def __init__(
         self,
@@ -736,7 +735,7 @@ class Host:
     async def getData(self, client, reader):
         data = b""
         try:
-            data = await reader.readuntil(self.sepChar)
+            data = await reader.readuntil(self.delimiter)
         except asyncio.LimitOverrunError as e:
             self.log(
                 "ERROR: Buffer limit too small for incoming data ("
@@ -750,10 +749,15 @@ class Host:
                 ),
                 "red",
             )
+        except ConnectionResetError:
+            self.log(
+                "ConnectionResetError - {}:{}".format(client.addr, client.port),
+                "red",
+            )
         except Exception as e:
             self.log("{} - {}:{}".format(e, client.addr, client.port))
             raise e
-        return data.rstrip(self.sepChar)
+        return data.rstrip(self.delimiter)
 
     async def _got_login_info(self, client, username, password):
         self.log("Login acquired - verifying {}...".format(client.addr), "yellow")
@@ -975,7 +979,7 @@ class Host:
 
 
 class Client:
-    sepChar = b"\n\t_SEPARATOR_\t\n"
+    delimiter = b"\n\t_SEPARATOR_\t\n"
 
     def __init__(self, multithreading=False):
         self.connected = False
@@ -1074,7 +1078,7 @@ class Client:
     async def getData(self, reader, writer):
         data = b""
         try:
-            data = await reader.readuntil(self.sepChar)
+            data = await reader.readuntil(self.delimiter)
         except asyncio.LimitOverrunError:
             print(
                 "ERROR: Buffer limit too small for incoming data ("
@@ -1082,10 +1086,12 @@ class Client:
             )
         except asyncio.exceptions.IncompleteReadError:
             print("asyncio.exceptions.IncompleteReadError")
+        except ConnectionResetError:
+            print("ConnectionResetError")
         except Exception as e:
             print("Error retrieving data")
             raise e
-        return data.rstrip(self.sepChar)
+        return data.rstrip(self.delimiter)
 
     async def _got_msg_length(self, data):
         if not data[7:].isalnum():
@@ -1162,7 +1168,7 @@ class Client:
         while self.connected:
             await asyncio.sleep(0.2)
         if not self.connected and self.reader:
-            self.reader.feed_data(self.sepChar)
+            self.reader.feed_data(self.delimiter)
 
     async def connect(
         self,
@@ -1218,7 +1224,7 @@ class Client:
         if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.encryptData(data)
 
-        data = data + self.sepChar
+        data = data + self.delimiter
         await self.send_raw("msgLen={}".format(str(len(data))))
         self.writer.write(data)
         await self.writer.drain()
@@ -1242,7 +1248,7 @@ class Client:
         data = make_bytes(data)
         if self.login[1] and self.verifiedUser and self._usr_enc:
             data = self.encryptData(data)
-        data = data + self.sepChar
+        data = data + self.delimiter
         self.writer.write(data)
         await self.writer.drain()
 

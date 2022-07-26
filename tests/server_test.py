@@ -51,7 +51,7 @@ if __name__ == "__main__":
         verbose=True,
         logging=False,
         loginRequired=True,
-        multithreading=True,
+        multithreading=False,
     )
     server.addUser("admin", "test123")
     server.gotData = lambda client, data, meta: echoData(client, data, meta)

@@ -12,11 +12,11 @@ elif sys.platform == "linux":
 import alvaro
 
 
-def lostConnection():
+async def lostConnection():
     print("Connection Lost!")
 
 
-def gotMessage(client, data, metaData):
+async def gotMessage(client, data, metaData):
     if data == "testing speed":
         return
     diff = time.time() - float(data)
@@ -33,7 +33,7 @@ def gotMessage(client, data, metaData):
     client.sendData(str(time.time()))
 
 
-def connected():
+async def connected():
     print("Connected!")
 
 
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     cli = alvaro.Client()
 
     cli.lostConnection = lostConnection
-    cli.gotData = gotMessage
+    cli.gotData = lambda data, meta: gotMessage(cli, data, meta)
     cli.madeConnection = connected
 
     target = lambda: asyncio.run(
