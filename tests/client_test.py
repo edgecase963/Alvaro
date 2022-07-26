@@ -15,13 +15,14 @@ import alvaro
 async def lostConnection():
     print("Connection Lost!")
 
-
 async def gotMessage(data, metaData):
     print("\nGot Message: {}\n".format(data))
 
-
 async def connected():
     print("Connected!")
+
+async def loggedIn(cli):
+    print("Logged in!")
 
 
 async def downloading():
@@ -39,6 +40,7 @@ if __name__ == "__main__":
     cli.gotData = gotMessage
     cli.madeConnection = connected
     cli.downloadStarted = downloading
+    cli.loggedIn = lambda: loggedIn(cli)
 
     target = lambda: asyncio.run(
         cli.connect(
@@ -54,7 +56,6 @@ if __name__ == "__main__":
     li = cli.waitForLogin(timeout=6)
 
     if c and li:
-        print("Logged in!")
         print("Type what you want and press Enter to send")
 
         while cli.connected:
