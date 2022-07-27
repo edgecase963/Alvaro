@@ -59,3 +59,14 @@ asyncio.run( server.start() )
 ```
 
 Alvaro uses asyncio to host/run/manage its servers. In order to start a server, it must be started with the `asyncio.run` function.
+
+If you're already using asynchronous software and want to run Alvaro in your program's main loop, simply use `await`
+
+```python
+import alvaro, asyncio
+
+server = alvaro.Host("127.0.0.1", port=8888)
+
+async def start_server():
+    await server.start()
+```
