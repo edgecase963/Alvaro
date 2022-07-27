@@ -954,10 +954,16 @@ class Host:
             self.running = False
             self.log("Unable to start server", "red")
 
+    def disconnect_all(self, reason=None):
+        for cli in self.clients:
+            if cli.connected:
+                cli.disconnect(reason)
+
     def stop(self):
         self.running = False
         self.log("Stopping server...", "blue")
         if self._server:
+            self.disconnect_all("Server shutting down")
             self._server.close()
             self.log("Server stopped", "green")
         else:
