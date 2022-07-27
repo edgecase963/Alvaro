@@ -220,7 +220,7 @@ class Login_Attempt():
 class User:
     def __init__(self, username):
         self.username = username
-        self._cipher_pass = None  # The encrypted password (ciphertext, salt)
+        self._cipher_pass = None  # The encrypted password (ciphertext)
         self.password = None  # This stays at `None` until the user is verified
         self.hasPassword = False
 
@@ -247,52 +247,45 @@ class User:
         self.password = None
         self.connections = []
 
-    def save(self, userDir):
-        user_info = {
+    def to_json(self):
+        data = {
             "username": self.username,
             "hasPassword": self.hasPassword,
             "loginHistory": self.loginHistory,
             "loginAttempts": [attempt.to_json() for attempt in self.loginAttempts],
+            "_cipher_pass": self._cipher_pass
         }
+        return data
 
-        if self._cipher_pass and self.hasPassword:
-            secret_info = self._cipher_pass[1] + self._cipher_pass[0]
+    def from_json(self, data):
+        self.username = data["username"]
+        self.hasPassword = data["hasPassword"]
+        self.loginHistory = data["loginHistory"]
+        self.loginAttempts = [Login_Attempt(**attempt) for attempt in data["loginAttempts"]]
+        self._cipher_pass = data["_cipher_pass"]
+        return self
 
-        savePath = os.path.join(userDir, self.username + ".json")
-        secretPath = os.path.join(userDir, self.username + "-secret")
+    def save(self, userDir):
+        if os.path.exists(userDir):
+            if os.path.isdir(userDir):
+                filePath = os.path.join(userDir, "{}.json".format(self.username))
+            else:
+                filePath = userDir
+        else:
+            filePath = userDir
 
-        with open(savePath, "w") as f:
-            json.dump(user_info, f)
-        if self._cipher_pass and self.hasPassword:
-            with open(secretPath, "wb") as f:
-                f.write(secret_info)
-        return savePath
+        with open(filePath, "w") as f:
+            json.dump(self.to_json(), f)
+        return filePath
 
     def load(self, filePath):
-        filePath = filePath.rstrip(directory_cutter)
         if not os.path.exists(filePath):
-            return
-        fileName = os.path.basename(filePath)
-        userDir = filePath.rstrip(fileName)
-
-        if fileName.endswith(".json"):
-            secretPath = os.path.join(userDir, fileName.replace(".json", "-secret"))
-            with open(filePath, "r") as f:
-                user_info = json.load(f)
-
-            secret_info = None
-            if os.path.exists(secretPath):
-                with open(secretPath, "rb") as f:
-                    secret_info = f.read()
-            if secret_info and user_info["hasPassword"]:
-                if len(secret_info) > 16:
-                    self._cipher_pass = [secret_info[16:], secret_info[:16]]
-
-            self.username = user_info["username"]
-            self.hasPassword = user_info["hasPassword"]
-            self.loginHistory = user_info["loginHistory"]
-            self.loginAttempts = [Login_Attempt(**attempt) for attempt in user_info["loginAttempts"]]
-            return self
+            return False
+        
+        with open(filePath, "r") as f:
+            data = json.load(f)
+        
+        return self.from_json(data)
 
     def verify(self, password):
         if self.hasPassword:
@@ -604,6 +597,7 @@ class Host:
         self.log("Saving users...")
         for username in self.users:
             savePath = self.users[username].save(self.userPath)
+            self.log("Saved user {} to {}".format(username, savePath))
         self.log("Users saved")
 
     def addUser(self, username, password=None):
@@ -954,10 +948,16 @@ class Host:
             self.running = False
             self.log("Unable to start server", "red")
 
+    def disconnect_all(self, reason=None):
+        for cli in self.clients:
+            if cli.connected:
+                cli.disconnect(reason)
+
     def stop(self):
         self.running = False
         self.log("Stopping server...", "blue")
         if self._server:
+            self.disconnect_all("Server shutting down")
             self._server.close()
             self.log("Server stopped", "green")
         else:
