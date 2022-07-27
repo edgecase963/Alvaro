@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 from dataclasses import dataclass
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.fernet import Fernet
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+from Crypto import Random
 from threading import Thread
 import datetime
-import cryptography
+import binascii
 import asyncio
 import json
 import base64
@@ -30,26 +29,45 @@ except ModuleNotFoundError:
     pass
 
 
-def encrypt(plainText, password):
-    if isinstance(password, str):
-        password = password.encode()
-    salt = os.urandom(16)
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-        backend=default_backend(),
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
-    f = Fernet(key)
-    cText = f.encrypt(plainText)
-    return cText, salt
+def encrypt(text, key):
+    # use SHA-256 over our key to get a proper-sized AES key
+    if isinstance(key, str):
+        key = key.encode()
+    if isinstance(text, str):
+        text = text.encode()
+    key = SHA256.new(key).digest()
+    IV = Random.new().read(AES.block_size)  # generate IV
+    encryptor = AES.new(key, AES.MODE_CBC, IV)
+    # calculate needed padding
+    padding = AES.block_size - len(text) % AES.block_size
+    text += bytes([padding]) * padding
+    # store the IV at the beginning and encrypt
+    data = IV + encryptor.encrypt(text)
+    return base64.b64encode(data).decode("latin-1")
 
+def decrypt(text, key):
+    if text == "":
+        return ""
+    if isinstance(key, str):
+        key = key.encode()
+    if isinstance(text, str):
+        text = text.encode()
+    # use SHA-256 over our key to get a proper-sized AES key
+    key = SHA256.new(key).digest()
+    try:
+        text = base64.b64decode(text)  # decode from base64
+    except binascii.Error:
+        return False
+    IV = text[:AES.block_size]  # extract the IV from the beginning
+    decryptor = AES.new(key, AES.MODE_CBC, IV)
+    data = decryptor.decrypt(text[AES.block_size:])  # decrypt
+    padding = data[-1]
+
+    if data[-padding:] != bytes([padding]) * padding:
+        return False
+    return data[:-padding]  # remove the padding
 
 def encryptFile(filePath, password):
-    if isinstance(password, str):
-        password = password.encode()
     if not os.path.exists(filePath):
         return False
     if not os.path.isfile(filePath):
@@ -57,40 +75,15 @@ def encryptFile(filePath, password):
     try:
         with open(filePath, "rb") as f:
             data = f.read()
-        cipherData, salt = encrypt(data, password)
+        cipherData = encrypt(data, password)
         with open(filePath, "wb") as f:
-            f.write(b"ENCRYPTED_FILE" + salt + cipherData)
+            f.write(make_bytes(cipherData))
         return True
     except Exception as e:
         print("Error encrypting file: {}".format(e))
         return False
 
-
-def decrypt(cText, salt, password):
-    if isinstance(password, str):
-        password = password.encode()
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-        backend=default_backend(),
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
-    f = Fernet(key)
-    try:
-        plainText = f.decrypt(cText)
-        return plainText
-    except cryptography.fernet.InvalidToken:
-        return False
-    except Exception as e:
-        print("Error decrypting data: {}".format(e))
-        return False
-
-
 def decryptFile(filePath, password):
-    if isinstance(password, str):
-        password = password.encode()
     if not os.path.exists(filePath):
         print("ERROR: Path does not exist")
         return False
@@ -106,9 +99,13 @@ def decryptFile(filePath, password):
         if len(data) <= 16:
             print("ERROR: File data corrupt or not encrypted")
             return False
-        salt = data[:16]
-        cipherData = data.lstrip(salt)
-        plainData = decrypt(cipherData, salt, password)
+        
+        plainData = decrypt(data, password)
+        if plainData is False:
+            # Failed to decrypt - likely wrong password
+            print("ERROR: Failed to decrypt file")
+            return
+        
         with open(filePath, "wb") as f:
             f.write(plainData)
     except Exception as e:
@@ -237,17 +234,13 @@ class User:
 
     def encryptData(self, data):
         if self.hasPassword and self.password:
-            cData, salt = encrypt(data, self.password.encode())
-            data = salt + cData
-            return data
+            cData = encrypt(data, self.password)
+            return make_bytes(cData)
         return data
 
     def decryptData(self, data):
         if self.hasPassword and self.password:
-            salt = data[:16]
-            cData = data[16:]
-            data = decrypt(cData, salt, self.password.encode())
-            return data
+            return decrypt(data, self.password)
         return data
 
     def reset(self):
@@ -302,13 +295,12 @@ class User:
             return self
 
     def verify(self, password):
-        if isinstance(password, str):
-            password = password.encode()
         if self.hasPassword:
             if self._cipher_pass and password:
-                if password == decrypt(
-                    self._cipher_pass[0], self._cipher_pass[1], password
-                ):
+                plainText = decrypt(self._cipher_pass, password)
+                if plainText is False:
+                    return False
+                if password == plainText.decode():
                     return True
             else:
                 return False
@@ -337,11 +329,9 @@ class User:
             self.password = None
 
     def addPassword(self, password):
-        if isinstance(password, str):
-            password = password.encode()
         if not self.hasPassword:
-            cText, salt = encrypt(password, password)
-            self._cipher_pass = [cText, salt]
+            cText = encrypt(password, password)
+            self._cipher_pass = cText
             self.password = password
             self.hasPassword = True
 
@@ -573,16 +563,12 @@ class Host:
             with open(location, "w") as f:
                 json.dump(self._pack_server_info(), f)
             if password:
-                if isinstance(password, str):
-                    password = password.encode()
                 encryptFile(location, password)
 
     def load(self, location, password=None):
         if os.path.exists(location):
             if os.path.isfile(location):
                 if password:
-                    if isinstance(password, str):
-                        password = password.encode()
                     if isinstance(password, bytes):
                         decryptFile(location, password)
                 
@@ -1010,8 +996,7 @@ class Client:
             self._usr_enc = newValue
 
         if isinstance(newValue, bool) and self.loop:
-            sData = "encData:{}".format(str(newValue))
-            self.sendRaw(sData)
+            self.sendRaw("encData:{}".format(str(newValue)))
             asyncio.run_coroutine_threadsafe(SET_USER_ENCD(self, newValue), self.loop)
 
     def _start_loop(self, loop, task, finishFunc):
@@ -1027,19 +1012,16 @@ class Client:
 
     def encryptData(self, data):
         if self.login[1]:
-            cData, salt = encrypt(data, self.login[1].encode())
-            data = salt + cData
-            return data
+            cData = encrypt(data, self.login[1].encode())
+            return make_bytes(cData)
         return data
 
     def decryptData(self, data):
         if self.login[1]:
-            salt = data[:16]
-            cData = data[16:]
-            data = decrypt(cData, salt, self.login[1].encode())
-            return data
+            return decrypt(data, self.login[1].encode())
         return data
 
+    # Interchangeable functions
     async def gotData(self, data, metaData):
         pass
     async def lostConnection(self):
