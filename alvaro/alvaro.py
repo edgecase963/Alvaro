@@ -14,10 +14,7 @@ import sys
 import ssl
 import os
 
-if sys.platform == "win32":
-    directory_cutter = "\\"
-elif sys.platform == "linux":
-    directory_cutter = "/"
+
 
 try:
     import uvloop
@@ -546,17 +543,18 @@ class Host:
         return self.loginAttempts
 
     def save(self, location, password=None):
-        location = location.rstrip(directory_cutter)
+        # Get the base name for the location - but ensure it doesn't end with "/" or "\"
+        if location[-1] in ["/", "\\"]:
+            location = location[:-1]
         base_name = os.path.basename(location)
-        location_directory = location.rstrip(base_name)
+
+        if not base_name.endswith(".json"):
+            location += ".json"
         
-        if os.path.exists(location_directory) or location.count(directory_cutter) == 0:
-            if not (location.endswith(".json")):
-                location += ".json"
-            with open(location, "w") as f:
-                json.dump(self._pack_server_info(), f)
-            if password:
-                encryptFile(location, password)
+        with open(location, "w") as f:
+            json.dump(self._pack_server_info(), f)
+        if password:
+            encryptFile(location, password)
 
     def load(self, location, password=None):
         if os.path.exists(location):
