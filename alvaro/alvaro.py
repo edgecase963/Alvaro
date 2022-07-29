@@ -506,10 +506,10 @@ class Host:
         if not base_name.endswith(".json"):
             location += ".json"
         
+        data = json.dumps(self._pack_server_info())
         if password:
-            data = encrypt(json.dumps(self._pack_server_info()), password)
-        else:
-            data = json.dumps(self._pack_server_info())
+            data = encrypt(data, password)
+        
         with open(location, "w") as f:
             f.write(data)
 
