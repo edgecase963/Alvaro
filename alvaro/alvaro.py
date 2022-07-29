@@ -64,50 +64,6 @@ def decrypt(text, key):
         return False
     return data[:-padding]  # remove the padding
 
-def encryptFile(filePath, password):
-    if not os.path.exists(filePath):
-        return False
-    if not os.path.isfile(filePath):
-        return False
-    try:
-        with open(filePath, "rb") as f:
-            data = f.read()
-        cipherData = encrypt(data, password)
-        with open(filePath, "wb") as f:
-            f.write(make_bytes(cipherData))
-        return True
-    except Exception as e:
-        print("Error encrypting file: {}".format(e))
-        return False
-
-def decryptFile(filePath, password):
-    if not os.path.exists(filePath):
-        print("ERROR: Path does not exist")
-        return False
-    if not os.path.isfile(filePath):
-        print("ERROR: Path is a directory")
-        return False
-    try:
-        with open(filePath, "rb") as f:
-            data = f.read()
-        if not data.startswith(b"ENCRYPTED_FILE"):
-            return True
-        data = data.lstrip(b"ENCRYPTED_FILE")
-        if len(data) <= 16:
-            print("ERROR: File data corrupt or not encrypted")
-            return False
-        
-        plainData = decrypt(data, password)
-        if plainData is False:
-            # Failed to decrypt - likely wrong password
-            print("ERROR: Failed to decrypt file")
-            return
-        
-        with open(filePath, "wb") as f:
-            f.write(plainData)
-    except Exception as e:
-        print("Error decrypting file: {}".format(e))
-
 
 def make_bytes(var):
     if isinstance(var, str):
@@ -551,30 +507,27 @@ class Host:
         if not base_name.endswith(".json"):
             location += ".json"
         
-        with open(location, "w") as f:
-            json.dump(self._pack_server_info(), f)
         if password:
-            encryptFile(location, password)
+            data = encrypt(json.dumps(self._pack_server_info()), password)
+        else:
+            data = json.dumps(self._pack_server_info())
+        with open(location, "w") as f:
+            f.write(data)
 
     def load(self, location, password=None):
-        if os.path.exists(location):
-            if os.path.isfile(location):
-                if password:
-                    if isinstance(password, bytes):
-                        decryptFile(location, password)
-                
-                with open(location, "rb") as f:
-                    server_info = json.load(f)
-                
-                if password:
-                    if isinstance(password, bytes):
-                        encryptFile(location, password)
-                for sVar in self._save_vars:
-                    if sVar in self.__dict__ and sVar in server_info:
-                        if sVar == "loginAttempts":
-                            self.loginAttempts = [Login_Attempt(**attempt) for attempt in server_info[sVar]]
-                        else:
-                            self.__dict__[sVar] = server_info[sVar]
+        if os.path.isfile(location):
+            with open(location, "r") as f:
+                server_info = f.read()
+            if password:
+                server_info = decrypt(server_info, password)
+            server_info = json.loads(server_info)
+            
+            for sVar in self._save_vars:
+                if sVar in self.__dict__ and sVar in server_info:
+                    if sVar == "loginAttempts":
+                        self.loginAttempts = [Login_Attempt(**attempt) for attempt in server_info[sVar]]
+                    else:
+                        self.__dict__[sVar] = server_info[sVar]
 
     def loadUsers(self, customPath=None):
         if customPath is not None:
