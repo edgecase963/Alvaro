@@ -1,6 +1,6 @@
 ﻿# Alvaro
 ---
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Updates](https://pyup.io/repos/github/edgecase963/Alvaro/shield.svg)](https://pyup.io/repos/github/edgecase963/Alvaro/) [![Downloads](https://pepy.tech/badge/alvaro)](https://pepy.tech/project/alvaro)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Updates](https://pyup.io/repos/github/edgecase963/Alvaro/shield.svg)](https://pyup.io/repos/github/edgecase963/Alvaro/) [![Downloads](https://pepy.tech/badge/alvaro)](https://pepy.tech/project/alvaro) [![CodeFactor](https://www.codefactor.io/repository/github/edgecase963/alvaro/badge)](https://www.codefactor.io/repository/github/edgecase963/alvaro)
 
 ![Logo](readme_media/logo.png)
 
@@ -38,10 +38,6 @@ pip3 install alvaro
 ```
 
 This project is completely open source and anyone is free to use it.
-
-CodeFactor Rating
-
-[![CodeFactor](https://www.codefactor.io/repository/github/edgecase963/alvaro/badge)](https://www.codefactor.io/repository/github/edgecase963/alvaro)
 
 
 Alvaro comes with some built-in features to help make data transfer not just more reliable, but easier to manage and implement into your project. One of these is the ability to monitor an ongoing download.

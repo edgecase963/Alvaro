@@ -18,11 +18,10 @@ import os
 
 try:
     import uvloop
-
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ModuleNotFoundError:
     # uvloop not installed
-    # uvloop is not required for the script to run but it won't be as fast
+    # uvloop is not required for Alvaro to run but it won't be as fast
     pass
 
 
@@ -507,10 +506,10 @@ class Host:
         if not base_name.endswith(".json"):
             location += ".json"
         
+        data = json.dumps(self._pack_server_info())
         if password:
-            data = encrypt(json.dumps(self._pack_server_info()), password)
-        else:
-            data = json.dumps(self._pack_server_info())
+            data = encrypt(data, password)
+        
         with open(location, "w") as f:
             f.write(data)
 
@@ -644,6 +643,7 @@ class Host:
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect("Blacklisted")
+        
         if self.multithreading:
             self.newLoop(lambda: self.blacklisted(addr))
         else:
@@ -690,6 +690,17 @@ class Host:
             raise e
         return data.rstrip(self.delimiter)
 
+    async def _check_attempt_threshold(self, addr):
+        number_of_attempts = len(
+            self.get_login_attempts(
+                address=addr,
+                start_date=time.time() - self.blacklistThreshold,
+            )
+        )
+
+        if number_of_attempts > self.blacklistLimit:
+            await self.blacklistIP(addr)
+
     async def _got_login_info(self, client, username, password):
         self.log("Login acquired - verifying {}...".format(client.addr), "yellow")
         user = self.users[username]
@@ -707,22 +718,16 @@ class Host:
 
         self.log(
             "Failed login attempt - {} - {}:{}".format(
-                username, client.addr, client.port
+                username,
+                client.addr,
+                client.port
             ),
             "red_bg",
         )
         new_login_attempt = Login_Attempt(time.time(), username, client.addr)
         self.loginAttempts.append(new_login_attempt)
 
-        number_of_attempts = len(
-            self.get_login_attempts(
-                address = client.addr,
-                start_date = time.time() - self.blacklistThreshold,
-            )
-        )
-
-        if number_of_attempts > self.blacklistLimit:
-            await self.blacklistIP(client.addr)
+        await self._check_attempt_threshold(client.addr)
 
         return False
 
@@ -918,7 +923,7 @@ class Host:
 class Client:
     delimiter = b"\n\t_SEPARATOR_\t\n"
 
-    def __init__(self, multithreading=False):
+    def __init__(self, multithreading=False, verbose=False):
         self.connected = False
         self.reader = None
         self.writer = None
@@ -933,6 +938,7 @@ class Client:
         self._next_message_length = 0
         self.default_buffer_limit = 644245094400
         self._enable_buffer_monitor = True
+        self.verbose = verbose
 
         self.downloading = False
 
@@ -960,6 +966,10 @@ class Client:
         new_loop = asyncio.new_event_loop()
         t = Thread(target=self._start_loop, args=(new_loop, task, finishFunc))
         t.start()
+
+    def log(self, message):
+        if self.verbose:
+            print("[{}]\t{}".format(time.time(), message))
 
     def encryptData(self, data):
         if self.login[1]:
@@ -1013,16 +1023,16 @@ class Client:
         try:
             data = await reader.readuntil(self.delimiter)
         except asyncio.LimitOverrunError:
-            print(
+            self.log(
                 "ERROR: Buffer limit too small for incoming data ("
                 " asyncio.LimitOverrunError )"
             )
         except asyncio.exceptions.IncompleteReadError:
-            print("asyncio.exceptions.IncompleteReadError")
+            self.log("asyncio.exceptions.IncompleteReadError")
         except ConnectionResetError:
-            print("ConnectionResetError")
+            self.log("ConnectionResetError")
         except Exception as e:
-            print("Error retrieving data")
+            self.log("Error retrieving data")
             raise e
         return data.rstrip(self.delimiter)
 
@@ -1135,12 +1145,10 @@ class Client:
             self.connection_updated = time.time()
             self.loop = asyncio.get_running_loop()
 
-            future = asyncio.run_coroutine_threadsafe(self._handle_self(), self.loop)
-
             await self._handle_host()
             await self.lostConnection()
         except Exception as e:
-            print("Error with connection")
+            self.log("Error connecting to host")
             self.connected = False
             self.connection_updated = time.time()
             raise e
@@ -1149,7 +1157,7 @@ class Client:
 
     async def _send_data(self, data, metaData=None):
         if not self.connected:
-            print("ERROR: Event loop not connected. Unable to send data")
+            self.log("ERROR: Event loop not connected. Unable to send data")
             return None
 
         data = prepData(data, metaData=metaData)
@@ -1164,19 +1172,22 @@ class Client:
 
     def sendData(self, data, metaData=None):
         if self.loop:
+            if not self.connected:
+                return None
             try:
                 asyncio.run_coroutine_threadsafe(
                     self._send_data(data, metaData=metaData), self.loop
                 )
             except Exception as e:
-                print("Error sending data")
+                self.log("Error sending data")
                 self.disconnect()
+                raise e
         else:
             self.disconnect()
 
     async def send_raw(self, data):
         if not self.connected:
-            print("ERROR: Event loop not connected. Unable to send data")
+            self.log("ERROR: Event loop not connected. Unable to send data")
             return None
         data = make_bytes(data)
         if self.login[1] and self.verifiedUser and self._usr_enc:
@@ -1190,7 +1201,6 @@ class Client:
             try:
                 asyncio.run_coroutine_threadsafe(self.send_raw(data), self.loop)
             except Exception as e:
-                print("Error sending data")
                 self.disconnect()
                 raise e
         else:
@@ -1217,7 +1227,7 @@ class Client:
                     if time.time() >= startTime + float(timeout):
                         break
             except Exception as e:
-                print("Error waiting for login: {}".format(e))
+                self.log("Error waiting for login")
                 self.disconnect()
         return self.verifiedUser
 
@@ -1227,5 +1237,8 @@ class Client:
         if self.writer:
             try:
                 self.writer.close()
+            except RuntimeWarning:
+                pass
             except Exception as e:
-                print("Error closing stream: {}".format(e))
+                self.log("Error closing stream")
+                raise e

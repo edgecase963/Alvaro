@@ -55,7 +55,7 @@ if __name__ == "__main__":
     server.gotData = lambda client, data, meta: echoData(client, data, meta)
     server.downloadStarted = downloading
     server.newClient = newClient
-    server.lostClient = lambda client: lostClient(server, client)
+    server.lostClient = lostClient
     server.loggedIn = userLogin
     server.serverStarted = serverStarted
 
