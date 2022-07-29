@@ -643,6 +643,7 @@ class Host:
         for client in self.clients:
             if client.addr == addr:
                 client.disconnect("Blacklisted")
+        
         if self.multithreading:
             self.newLoop(lambda: self.blacklisted(addr))
         else:
@@ -689,6 +690,17 @@ class Host:
             raise e
         return data.rstrip(self.delimiter)
 
+    async def _check_attempt_threshold(self, addr):
+        number_of_attempts = len(
+            self.get_login_attempts(
+                address=addr,
+                start_date=time.time() - self.blacklistThreshold,
+            )
+        )
+
+        if number_of_attempts > self.blacklistLimit:
+            await self.blacklistIP(addr)
+
     async def _got_login_info(self, client, username, password):
         self.log("Login acquired - verifying {}...".format(client.addr), "yellow")
         user = self.users[username]
@@ -706,22 +718,16 @@ class Host:
 
         self.log(
             "Failed login attempt - {} - {}:{}".format(
-                username, client.addr, client.port
+                username,
+                client.addr,
+                client.port
             ),
             "red_bg",
         )
         new_login_attempt = Login_Attempt(time.time(), username, client.addr)
         self.loginAttempts.append(new_login_attempt)
 
-        number_of_attempts = len(
-            self.get_login_attempts(
-                address = client.addr,
-                start_date = time.time() - self.blacklistThreshold,
-            )
-        )
-
-        if number_of_attempts > self.blacklistLimit:
-            await self.blacklistIP(client.addr)
+        await self._check_attempt_threshold(client.addr)
 
         return False
 
