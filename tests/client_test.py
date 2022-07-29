@@ -34,7 +34,7 @@ async def downloading():
 
 
 if __name__ == "__main__":
-    cli = alvaro.Client()
+    cli = alvaro.Client(verbose=True)
 
     cli.lostConnection = lostConnection
     cli.gotData = gotMessage
