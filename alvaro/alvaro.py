@@ -328,6 +328,9 @@ class Connection:
                 print("Error sending data")
                 raise e
 
+    def send(self, data, metaData=None, enc=True):
+        self.sendData(data, metaData=metaData, enc=enc)
+
     async def send_raw(self, data, enc=True):
         try:
             data = make_bytes(data)
@@ -429,9 +432,6 @@ class Host:
         self.logging = logging
         self.logFile = logFile
 
-        self._save_vars = ["blacklist", "loginAttempts"]
-        # A list containing all server variables that will be saved when `self.save_server` is executed
-
         self.termColors = {
             "end": "\033[0m",
             "bold": "\033[1m",
@@ -449,15 +449,26 @@ class Host:
         }
         self.useTermColors = useTermColors
 
-    def _pack_server_info(self):
-        server_info = {}
-        for sVar in self._save_vars:
-            if sVar in self.__dict__:
+    def to_json(self, include_users=True):
+        data = {
+            "loginAttempts": [attempt.to_json() for attempt in self.loginAttempts],
+            "blacklist": self.blacklist,
+        }
+        if include_users:
+            data["users"] = [user.to_json() for user in self.users.values()]
+        return data
+
+    def from_json(self, data):
+        for sVar in data:
+            if sVar in self.__dict__ and sVar in data:
                 if sVar == "loginAttempts":
-                    server_info[sVar] = [attempt.to_json() for attempt in self.loginAttempts]
+                    self.loginAttempts = [Login_Attempt(**attempt) for attempt in data[sVar]]
+                elif sVar == "users":
+                    self.users = {
+                        user["username"]: User("").from_json(user) for user in data[sVar]
+                    }
                 else:
-                    server_info[sVar] = self.__dict__[sVar]
-        return server_info
+                    self.__dict__[sVar] = data[sVar]
 
     def _start_loop(self, loop, task, finishFunc):
         asyncio.set_event_loop(loop)
@@ -497,7 +508,7 @@ class Host:
         
         return self.loginAttempts
 
-    def save(self, location, password=None):
+    def save(self, location, password=None, include_users=True):
         # Get the base name for the location - but ensure it doesn't end with "/" or "\"
         if location[-1] in ["/", "\\"]:
             location = location[:-1]
@@ -506,7 +517,7 @@ class Host:
         if not base_name.endswith(".json"):
             location += ".json"
         
-        data = json.dumps(self._pack_server_info())
+        data = json.dumps(self.to_json(include_users=include_users))
         if password:
             data = encrypt(data, password)
         
@@ -519,14 +530,9 @@ class Host:
                 server_info = f.read()
             if password:
                 server_info = decrypt(server_info, password)
-            server_info = json.loads(server_info)
+            data = json.loads(server_info)
             
-            for sVar in self._save_vars:
-                if sVar in self.__dict__ and sVar in server_info:
-                    if sVar == "loginAttempts":
-                        self.loginAttempts = [Login_Attempt(**attempt) for attempt in server_info[sVar]]
-                    else:
-                        self.__dict__[sVar] = server_info[sVar]
+            self.from_json(data)
 
     def loadUsers(self, customPath=None):
         if customPath is not None:
@@ -1184,6 +1190,9 @@ class Client:
                 raise e
         else:
             self.disconnect()
+
+    def send(self, data, metaData=None):
+        self.sendData(data, metaData=metaData)
 
     async def send_raw(self, data):
         if not self.connected:

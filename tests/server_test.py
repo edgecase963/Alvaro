@@ -28,10 +28,10 @@ async def newClient(client):
     client.testingSpeed = False
 
 async def lostClient(client):
-    print("Lost connection to {}:{}".format(client.addr, client.port))
+    pass
 
 async def userLogin(client, user):
-    print("{} has logged in as {}".format(client.addr, user.username))
+    pass
 
 async def downloading(client):
     print("Download started...\n")
