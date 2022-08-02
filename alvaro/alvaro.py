@@ -392,7 +392,7 @@ class Host:
         logging=False,
         logFile=None,
         loginRequired=False,
-        multithreading=True,
+        multithreading=False,
         useTermColors=True,
     ):
         self.running = False
