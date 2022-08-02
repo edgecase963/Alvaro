@@ -12,7 +12,7 @@ It offers SSL support, user management and many more features to help you on you
 
 To learn more, check out [the wiki!](https://github.com/edgecase963/Alvaro/wiki)
 
-Tired of spending hours, sometimes even days writing up complicated code just to get two devices to talk to one another? Alvaro is what you're looking for. All the difficult tasks of flow control, encryption and _endless_ bugs all taken care of for you! This project provides you the ability to create a fully functional server in just a few lines of code. So you can dive right into your project.
+Never spend hours or even days writing complicated networking software just to get two devices to communicate again. All the difficult tasks of flow control, encryption and _endless_ bugs all taken care of for you! This project provides you the ability to create a fully functional server in just a few lines of code. So you can dive right into your project.
 
 After all, time is our most valuable resource.
 
@@ -25,6 +25,7 @@ git clone https://github.com/edgecase963/Alvaro
 cd Alvaro
 
 # Install requirements
+# Will still work without this step, but slower
 pip3 install -r requirements.txt
 
 # install Alvaro
@@ -37,8 +38,13 @@ Alternatively, you can also use the pip command to install Alvaro:
 pip3 install alvaro
 ```
 
-This project is completely open source and anyone is free to use it.
+### Important Note
+As of the creation of this README, installing the `requirements.txt` via pip is **not necessary**.
+The requirements file only contains `uvloop` which helps speed up Alvaro, but does not prevent it from working.
+Alvaro is designed to work out of the box with no extra installations or dependencies.
 
+
+This project is completely open source and anyone is free to use it.
 
 Alvaro comes with some built-in features to help make data transfer not just more reliable, but easier to manage and implement into your project. One of these is the ability to monitor an ongoing download.
 
