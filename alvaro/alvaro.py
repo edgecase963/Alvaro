@@ -328,6 +328,9 @@ class Connection:
                 print("Error sending data")
                 raise e
 
+    def send(self, data, metaData=None, enc=True):
+        self.sendData(data, metaData=metaData, enc=enc)
+
     async def send_raw(self, data, enc=True):
         try:
             data = make_bytes(data)
@@ -1187,6 +1190,9 @@ class Client:
                 raise e
         else:
             self.disconnect()
+
+    def send(self, data, metaData=None):
+        self.sendData(data, metaData=metaData)
 
     async def send_raw(self, data):
         if not self.connected:
