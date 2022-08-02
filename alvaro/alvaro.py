@@ -446,13 +446,13 @@ class Host:
         }
         self.useTermColors = useTermColors
 
-    def to_json(self):
+    def to_json(self, include_users=True):
         data = {
             "loginAttempts": [attempt.to_json() for attempt in self.loginAttempts],
-            "users": [user.to_json() for user in self.users.values()],
             "blacklist": self.blacklist,
         }
-        data["users"] = [user.to_json() for user in self.users.values()]
+        if include_users:
+            data["users"] = [user.to_json() for user in self.users.values()]
         return data
 
     def from_json(self, data):
@@ -505,7 +505,7 @@ class Host:
         
         return self.loginAttempts
 
-    def save(self, location, password=None):
+    def save(self, location, password=None, include_users=True):
         # Get the base name for the location - but ensure it doesn't end with "/" or "\"
         if location[-1] in ["/", "\\"]:
             location = location[:-1]
@@ -514,7 +514,7 @@ class Host:
         if not base_name.endswith(".json"):
             location += ".json"
         
-        data = json.dumps(self.to_json())
+        data = json.dumps(self.to_json(include_users=include_users))
         if password:
             data = encrypt(data, password)
         
